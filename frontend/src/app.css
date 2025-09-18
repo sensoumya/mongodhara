@@ -1,0 +1,32 @@
+@import "tailwindcss";
+@plugin "daisyui" {
+  themes: all;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Headings and poppins utility */
+h1, h2, h3, h4, h5, h6, .poppins {
+  font-family: 'Poppins', sans-serif;
+}
+
+/* Default body text → Roboto */
+body {
+  font-family: 'Roboto', sans-serif;
+}
+
+/* Monospace contexts → Source Code Pro */
+code, pre, kbd, samp {
+  font-family: "Source Code Pro", monospace;
+}
+
+/* CodeMirror editor */
+.cm-editor,
+.cm-scroller,
+.cm-content,
+.cm-line,
+.cm-gutters {
+  font-family: "Source Code Pro", monospace;
+}

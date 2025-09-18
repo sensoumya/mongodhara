@@ -1,0 +1,315 @@
+<script lang="ts">
+  import { createEventDispatcher, onDestroy, onMount } from "svelte";
+
+  // Component props (controlled by the parent component)
+  export let document: object | null;
+  export let isOpen: boolean;
+
+  // Internal component state
+  let editorContainer: HTMLElement;
+  let editorView: any;
+  let panelElement: HTMLElement;
+  let isExpanded = false;
+  let showAlert = false;
+  let alertMessage = "";
+
+  const dispatch = createEventDispatcher();
+  const minWidth = 400;
+  const defaultWidth = 400;
+  let panelWidth = defaultWidth;
+
+  // A reactive statement to update the editor's content when the document prop changes
+  $: if (editorView && document && isOpen) {
+    const jsonString = JSON.stringify(document, null, 4);
+    if (editorView.state.doc.toString() !== jsonString) {
+      editorView.dispatch({
+        changes: {
+          from: 0,
+          to: editorView.state.doc.length,
+          insert: jsonString,
+        },
+      });
+    }
+  }
+
+  // Svelte's lifecycle functions
+  onMount(() => {
+    if (window.innerWidth > 1024) {
+      panelWidth = window.innerWidth * 0.6;
+    }
+    initializeEditor();
+  });
+
+  onDestroy(() => {
+    editorView?.destroy();
+  });
+
+  // Initializes CodeMirror editor with all extensions
+  function initializeEditor() {
+    if (editorView) editorView.destroy();
+
+    // The CodeMirror objects are loaded from the CDN and made available on `window`.
+    const { EditorView, basicSetup } = window.CodeMirror;
+    const { json, jsonParseLinter } = window.CodeMirror.lang.json;
+    const { foldGutter } = window.CodeMirror.language;
+    const { linter, lintGutter } = window.CodeMirror.lint;
+    const { search } = window.CodeMirror.search;
+    const { autocompletion } = window.CodeMirror.autocomplete;
+
+    const extensions = [
+      basicSetup,
+      json(),
+      lintGutter(),
+      linter(jsonParseLinter()),
+      autocompletion(),
+      EditorView.lineWrapping,
+      foldGutter(),
+      search({ top: true }),
+    ];
+
+    editorView = new EditorView({
+      doc: JSON.stringify(document || {}, null, 4),
+      extensions,
+      parent: editorContainer,
+    });
+  }
+
+  // Logic for resizing and expanding the panel
+  function toggleExpand() {
+    isExpanded = !isExpanded;
+    panelWidth = isExpanded ? defaultWidth : window.innerWidth * 0.6;
+  }
+
+  function startResize(event: MouseEvent) {
+    if (isExpanded) return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = panelElement.offsetWidth;
+
+    function handleMouseMove(e: MouseEvent) {
+      const newWidth = startWidth - (e.clientX - startX);
+      panelWidth = Math.max(newWidth, minWidth);
+    }
+
+    function handleMouseUp() {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    }
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  }
+
+  // Handles saving the document and validates JSON format
+  function handleSave() {
+    try {
+      const parsed = JSON.parse(editorView.state.doc.toString());
+      dispatch("save", parsed);
+    } catch {
+      alertMessage = "Invalid JSON format!";
+      showAlert = true;
+    }
+  }
+
+  // Re-formats the JSON content in the editor
+  function prettify() {
+    try {
+      const parsed = JSON.parse(editorView.state.doc.toString());
+      const pretty = JSON.stringify(parsed, null, 4);
+      editorView.dispatch({
+        changes: { from: 0, to: editorView.state.doc.length, insert: pretty },
+      });
+    } catch {
+      alertMessage = "Invalid JSON format!";
+      showAlert = true;
+    }
+  }
+
+  // Closes the editor panel
+  function handleClose() {
+    isOpen = false;
+  }
+
+  // Closes the custom alert modal
+  function handleAlertClose() {
+    showAlert = false;
+    alertMessage = "";
+  }
+
+  $: currentPanelWidth = `${panelWidth}px`;
+</script>
+
+<svelte:head>
+  <style>
+    .cm-panels {
+      @apply bg-base-200 text-base-content rounded-lg shadow-md p-2;
+    }
+    .cm-searchMatch {
+      @apply bg-primary/30;
+    }
+    .cm-searchMatch.cm-searchMatch-selected {
+      @apply bg-primary text-primary-content;
+    }
+    .cm-panels input {
+      @apply input input-bordered input-sm;
+    }
+    .cm-panels button {
+      @apply btn btn-ghost btn-sm;
+    }
+  </style>
+  <!-- Load CodeMirror from CDN to avoid build errors -->
+  <script
+    src="https://unpkg.com/@codemirror/view@6.26.1/dist/index.min.js"
+  ></script>
+  <script
+    src="https://unpkg.com/@codemirror/state@6.4.1/dist/index.min.js"
+  ></script>
+  <script
+    src="https://unpkg.com/@codemirror/commands@6.3.3/dist/index.min.js"
+  ></script>
+  <script
+    src="https://unpkg.com/@codemirror/language@6.10.1/dist/index.min.js"
+  ></script>
+  <script
+    src="https://unpkg.com/@codemirror/lint@6.4.1/dist/index.min.js"
+  ></script>
+  <script
+    src="https://unpkg.com/@codemirror/autocomplete@6.11.1/dist/index.min.js"
+  ></script>
+  <script
+    src="https://unpkg.com/@codemirror/search@6.5.5/dist/index.min.js"
+  ></script>
+  <script
+    src="https://unpkg.com/@codemirror/lang-json@6.1.2/dist/index.min.js"
+  ></script>
+  <script>
+    // Make CodeMirror modules available on the window object
+    window.CodeMirror = {
+      ...window.CodeMirror,
+      ...window.CodeMirror.view,
+      ...window.CodeMirror.state,
+      ...window.CodeMirror.commands,
+      ...window.CodeMirror.language,
+      ...window.CodeMirror.lint,
+      ...window.CodeMirror.autocomplete,
+      ...window.CodeMirror.search,
+      lang: { json: window.CodeMirror.lang.json },
+    };
+  </script>
+</svelte:head>
+
+<div
+  class="fixed inset-0 z-[9999] overflow-hidden"
+  class:pointer-events-none={!isOpen}
+>
+  <div
+    class="absolute top-16 right-0 h-[calc(100vh-4rem)] bg-base-100 shadow-2xl transition-all duration-300 ease-in-out flex flex-row-reverse"
+    class:translate-x-full={!isOpen}
+    style="width: {currentPanelWidth};"
+    bind:this={panelElement}
+  >
+    <div
+      class="w-2 h-full cursor-col-resize absolute left-0 top-0 z-10 hover:bg-base-200 transition-colors"
+      on:mousedown={startResize}
+      aria-label="Resize editor panel"
+    ></div>
+
+    <div class="flex flex-col flex-grow p-4 overflow-hidden">
+      <div
+        class="flex justify-between items-center pb-4 border-b border-base-200 -mx-4 px-4"
+      >
+        <div class="flex items-center space-x-3">
+          <button
+            on:click={toggleExpand}
+            class="btn btn-ghost btn-md tooltip"
+            data-tip-bottom
+            data-tip={isExpanded ? "Collapse" : "Expand"}
+          >
+            {#if isExpanded}
+              <i class="fas fa-compress-alt"></i>
+            {:else}
+              <i class="fas fa-expand-alt"></i>
+            {/if}
+          </button>
+          <h2 class="text-xl font-bold poppins text-base-content">
+            Edit Document
+          </h2>
+        </div>
+        <button
+          on:click={handleClose}
+          class="btn btn-ghost btn-md tooltip"
+          data-tip-bottom
+          data-tip="Close"
+        >
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+
+      <div class="flex-grow my-4 overflow-y-auto rounded-lg">
+        <div
+          class="h-full w-full rounded-lg font-mono text-sm bg-base-200 text-base-content shadow-inner"
+          bind:this={editorContainer}
+        ></div>
+      </div>
+
+      <div
+        class="flex justify-end space-x-3 pt-4 border-t border-base-200 -mx-4 px-4"
+      >
+        <button
+          on:click={prettify}
+          class="btn btn-outline btn-md tooltip"
+          data-tip-bottom
+          data-tip="Reformat JSON"
+        >
+          <i class="fas fa-align-left"></i>
+        </button>
+        <button
+          on:click={handleSave}
+          class="btn btn-primary btn-md tooltip"
+          data-tip-bottom
+          data-tip="Save Document"
+        >
+          <i class="fas fa-save"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Custom Alert Modal -->
+{#if showAlert}
+  <div
+    class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-[100]"
+  >
+    <div
+      class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-xl max-w-sm mx-auto text-center transform transition-transform duration-300 scale-100"
+    >
+      <p class="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-200">
+        {alertMessage}
+      </p>
+      <button
+        on:click={handleAlertClose}
+        class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+        >OK</button
+      >
+    </div>
+  </div>
+{/if}
+
+<style global>
+  .cm-panels {
+    @apply bg-base-200 text-base-content rounded-lg shadow-md p-2;
+  }
+  .cm-searchMatch {
+    @apply bg-primary/30;
+  }
+  .cm-searchMatch.cm-searchMatch-selected {
+    @apply bg-primary text-primary-content;
+  }
+  .cm-panels input {
+    @apply input input-bordered input-sm;
+  }
+  .cm-panels button {
+    @apply btn btn-ghost btn-sm;
+  }
+</style>
