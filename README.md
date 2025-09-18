@@ -6,6 +6,15 @@ Built with Svelte on the frontend and FastAPI on the backend, mongoDhārā provi
 
 ---
 
+## ⚠️ Disclaimer  
+
+**mongoDhārā** is an independent, open-source tool created to help developers visualize and interact with MongoDB databases.  
+It is **not affiliated with, endorsed by, or sponsored by MongoDB, Inc.**  
+All trademarks and names related to MongoDB are the property of their respective owners.  
+Use of **mongoDhārā** does not imply any official connection with MongoDB, Inc. or its products.  
+
+---
+
 ## 🚀 Tech Stack
 
 - **Frontend:** Svelte  
