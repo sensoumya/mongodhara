@@ -4,9 +4,14 @@
   export let message: string;
   export let onConfirm: () => Promise<void> | void = () => {};
   export let onCancel: () => void = () => {};
+  export let confirmButtonText: string = "Confirm";
+  export let cancelButtonText: string = "Cancel";
+  export let confirmDisabled: boolean = false;
+  export let validationMessage: string = "";
   let isLoading = false;
 
   async function handleConfirm() {
+    if (confirmDisabled) return;
     isLoading = true;
     try {
       if (onConfirm) {
@@ -67,21 +72,33 @@
             class="btn btn-outline"
             disabled={isLoading}
           >
-            Cancel
+            {cancelButtonText}
           </button>
         {/if}
         {#if onConfirm}
-          <button
-            on:click={handleConfirm}
-            class="btn btn-primary"
-            disabled={isLoading}
-          >
-            {#if isLoading}
-              <span class="loading loading-spinner loading-sm"></span>
-            {:else}
-              Confirm
-            {/if}
-          </button>
+          {#if confirmDisabled && validationMessage}
+            <div class="tooltip tooltip-top" data-tip={validationMessage}>
+              <button
+                on:click={handleConfirm}
+                class="btn btn-primary opacity-50 cursor-not-allowed"
+                disabled={true}
+              >
+                {confirmButtonText}
+              </button>
+            </div>
+          {:else}
+            <button
+              on:click={handleConfirm}
+              class="btn btn-primary"
+              disabled={isLoading}
+            >
+              {#if isLoading}
+                <span class="loading loading-spinner loading-sm"></span>
+              {:else}
+                {confirmButtonText}
+              {/if}
+            </button>
+          {/if}
         {/if}
       </div>
     {/if}

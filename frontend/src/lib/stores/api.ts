@@ -1,7 +1,14 @@
-const API_BASE = import.meta.env.REMOTE_API_BASE_URL || "/mongodharaapi";
+const API_BASE = "http://0.0.0.0:8000" //import.meta.env.REMOTE_API_BASE_URL || "/mongodharaapi";
 
 function url(path: string): string {
-  return `${API_BASE}${path.startsWith("/") ? path : "/" + path}`;
+  // Remove leading '/' if present, then base64url encode the path
+  const pathWithoutLeadingSlash = path.startsWith("/") ? path.slice(1) : path;
+  const encodedPath = btoa(pathWithoutLeadingSlash)
+    .replace(/\+/g, '-')    // Replace + with -
+    .replace(/\//g, '_')    // Replace / with _
+    .replace(/=/g, '');     // Remove padding =
+  return `${API_BASE}/${encodedPath}`;
+  // return `${API_BASE}${path}`;
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
@@ -35,5 +42,14 @@ export async function apiDelete<T>(path: string): Promise<T> {
     method: "DELETE",
   });
   if (!res.ok) throw new Error(`DELETE ${path} failed: ${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+export async function apiUploadFile<T>(path: string, formData: FormData): Promise<T> {
+  const res = await fetch(url(path), {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) throw new Error(`UPLOAD ${path} failed: ${res.status} ${res.statusText}`);
   return res.json();
 }

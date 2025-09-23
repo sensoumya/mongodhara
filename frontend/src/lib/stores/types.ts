@@ -28,6 +28,19 @@ export interface PaginatedCollections {
   page_size: number;
 }
 
+export interface GridFSBucket {
+  bucket_name: string;
+  files_count: number;
+  total_size: number;
+}
+
+export interface PaginatedGridFSBuckets {
+  buckets: GridFSBucket[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 // Adjusted to match the OpenAPI spec's response for querying documents.
 // It returns a 'documents' array and a 'count' of total results.
 export interface DocumentQueryResponse {

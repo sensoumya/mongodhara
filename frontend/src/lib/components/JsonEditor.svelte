@@ -14,6 +14,7 @@
 
   export let isOpen: boolean = false;
   export let document: any = {};
+  export let readOnly: boolean = false;
   const dispatch = createEventDispatcher();
 
   let editorContainer: HTMLElement;
@@ -98,38 +99,48 @@
   function initializeEditor() {
     if (!editorContainer) return;
 
-    editorView = new EditorView({
-      doc: jsonString,
-      extensions: [
-        basicSetup,
-        json(),
-        lintGutter(),
-        linter((view) => {
-          try {
-            jsonlint.parse(view.state.doc.toString());
-            return [];
-          } catch (e: any) {
-            return [
-              {
-                from: 0,
-                to: view.state.doc.length,
-                severity: "error",
-                message: e.message,
-              },
-            ];
-          }
-        }),
-        EditorView.lineWrapping,
-        history(),
-        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+    const extensions = [
+      basicSetup,
+      json(),
+      lintGutter(),
+      linter((view) => {
+        try {
+          jsonlint.parse(view.state.doc.toString());
+          return [];
+        } catch (e: any) {
+          return [
+            {
+              from: 0,
+              to: view.state.doc.length,
+              severity: "error",
+              message: e.message,
+            },
+          ];
+        }
+      }),
+      EditorView.lineWrapping,
+      history(),
+      keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+      fullHeightTheme,
+      daisyUITheme, // Updated theme extension
+    ];
+
+    // Add readOnly extension if readOnly prop is true
+    if (readOnly) {
+      extensions.push(EditorView.editable.of(false));
+    } else {
+      extensions.push(
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             jsonString = update.state.doc.toString();
           }
-        }),
-        fullHeightTheme,
-        daisyUITheme, // Updated theme extension
-      ],
+        })
+      );
+    }
+
+    editorView = new EditorView({
+      doc: jsonString,
+      extensions,
       parent: editorContainer,
     });
   }
@@ -185,6 +196,13 @@
     dispatch("close");
   }
 
+  function handleBackdropClick(event: MouseEvent) {
+    // Only close if clicking on the backdrop itself, not on child elements
+    if (event.target === event.currentTarget) {
+      close();
+    }
+  }
+
   function handleAlertClose() {
     showAlert = false;
     alertMessage = "";
@@ -193,12 +211,17 @@
   $: currentPanelWidth = `${panelWidth}px`;
 </script>
 
-<div class="fixed inset-0" class:pointer-events-none={!isOpen}>
+<div
+  class="fixed inset-0"
+  class:pointer-events-none={!isOpen}
+  on:click={handleBackdropClick}
+>
   <div
     class="absolute top-16 right-0 h-[calc(100vh-4rem)] bg-base-100 shadow-2xl transition-all duration-300 ease-in-out flex flex-row-reverse z-[9999]"
     class:translate-x-full={!isOpen}
     style="width: {currentPanelWidth};"
     bind:this={panelElement}
+    on:click|stopPropagation
   >
     <div
       class="w-2 h-full cursor-col-resize absolute left-0 top-0 z-10 hover:bg-base-200 transition-colors"
@@ -230,16 +253,18 @@
         </div>
 
         <div class="flex space-x-3">
-          <div class="tooltip" data-tip="Reformat JSON">
-            <button on:click={prettify} class="btn btn-ghost">
-              <i class="fa-solid fa-wand-magic-sparkles text-lg"></i>
-            </button>
-          </div>
-          <div class="tooltip" data-tip="Save Document">
-            <button on:click={save} class="btn btn-primary">
-              <i class="fas fa-save text-lg"></i>
-            </button>
-          </div>
+          {#if !readOnly}
+            <div class="tooltip" data-tip="Reformat JSON">
+              <button on:click={prettify} class="btn btn-ghost">
+                <i class="fa-solid fa-wand-magic-sparkles text-lg"></i>
+              </button>
+            </div>
+            <div class="tooltip" data-tip="Save Document">
+              <button on:click={save} class="btn btn-primary">
+                <i class="fas fa-save text-lg"></i>
+              </button>
+            </div>
+          {/if}
         </div>
       </div>
     </div>
