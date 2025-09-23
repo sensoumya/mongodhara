@@ -1,4 +1,4 @@
-const API_BASE = "http://0.0.0.0:8000" //import.meta.env.REMOTE_API_BASE_URL || "/mongodharaapi";
+const API_BASE = import.meta.env.REMOTE_API_BASE_URL || "/mongodhara/api";
 
 function url(path: string): string {
   // Remove leading '/' if present, then base64url encode the path
