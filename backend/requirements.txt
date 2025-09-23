@@ -1,4 +1,5 @@
 fastapi
 uvicorn[standard]
+gunicorn
 pymongo
 python-dotenv

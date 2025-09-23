@@ -1,0 +1,19 @@
+apiVersion: v2
+name: mongodhara
+description: A Helm chart for Mongodhara - MongoDB Admin Interface
+type: application
+version: 2.1.0
+appVersion: "2.1.0"
+home: https://github.com/sensoumya/mongodhara
+sources:
+  - https://github.com/sensoumya/mongodhara
+maintainers:
+  - name: sensoumya
+keywords:
+  - mongodb
+  - admin
+  - database
+  - ui
+  - api
+annotations:
+  category: Database

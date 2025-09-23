@@ -31,5 +31,9 @@ EXPOSE 3000
 # Set environment variables
 ENV NODE_ENV=production
 
+# Create a non-root user and switch to it
+RUN useradd --create-home appuser && chown -R appuser /app
+USER appuser
+
 # Command to run the application
 CMD ["node", "build/index.js"]

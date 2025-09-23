@@ -1,0 +1,182 @@
+# Default values for mongodhara
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Global settings
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+# Backend API configuration
+backend:
+  enabled: true
+  replicaCount: 1
+  
+  image:
+    repository: mongodhara/backend
+    pullPolicy: IfNotPresent
+    tag: ""
+  
+  imagePullSecrets: []
+  nameOverride: ""
+  fullnameOverride: ""
+  
+  serviceAccount:
+    create: true
+    annotations: {}
+    name: ""
+  
+  podAnnotations: {}
+  
+  podSecurityContext: {}
+  
+  securityContext: {}
+  
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8000
+    annotations: {}
+  
+  # Environment variables
+  env:
+    - name: MONGO_URI
+      value: "mongodb://localhost:27017"
+  
+  # Additional environment variables from ConfigMap or Secret
+  envFrom: []
+  
+  resources: {}
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
+  
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 100
+    targetCPUUtilizationPercentage: 80
+  
+  nodeSelector: {}
+  
+  tolerations: []
+  
+  affinity: {}
+
+# Frontend UI configuration
+frontend:
+  enabled: true
+  replicaCount: 1
+  
+  image:
+    repository: mongodhara/frontend
+    pullPolicy: IfNotPresent
+    tag: ""
+  
+  imagePullSecrets: []
+  nameOverride: ""
+  fullnameOverride: ""
+  
+  serviceAccount:
+    create: true
+    annotations: {}
+    name: ""
+  
+  podAnnotations: {}
+  
+  podSecurityContext: {}
+  
+  securityContext: {}
+  
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 3000
+    annotations: {}
+  
+  # Environment variables
+  env:
+    - name: REMOTE_API_BASE_URL
+      value: ""
+  
+  # Additional environment variables from ConfigMap or Secret
+  envFrom: []
+  
+  resources: {}
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
+  
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 100
+    targetCPUUtilizationPercentage: 80
+  
+  nodeSelector: {}
+  
+  tolerations: []
+  
+  affinity: {}
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    # Rewrite API paths to remove /mongodhara/api prefix
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    
+    # CORS Configuration
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization"
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+    nginx.ingress.kubernetes.io/cors-max-age: "86400"
+    
+    # Production Rate Limiting
+    nginx.ingress.kubernetes.io/rate-limit-rps: "100"          # 100 requests per second per IP
+    nginx.ingress.kubernetes.io/rate-limit-rpm: "6000"        # 6000 requests per minute per IP
+    nginx.ingress.kubernetes.io/rate-limit-connections: "10"   # Max 10 concurrent connections per IP
+    
+    # Rate limit response codes and headers
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-rpm: "6000" 
+    nginx.ingress.kubernetes.io/limit-connections: "10"
+    
+    # Custom rate limit response
+    nginx.ingress.kubernetes.io/custom-http-errors: "429"
+    
+    # Additional security headers
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "30"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
+    
+    # Additional annotations can be added here
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: mongodhara.local
+      paths:
+        # API routes - strip /mongodhara/api prefix  
+        - path: /mongodhara/api(/)(.*)
+          pathType: ImplementationSpecific
+          backend: backend
+        # Additional API paths can be added here
+        # - path: /mongodhara/services(/|$)(.*)
+        #   pathType: ImplementationSpecific  
+        #   backend: backend
+        # Frontend routes - keep /mongodhara as base path
+        - path: /mongodhara
+          pathType: Prefix
+          backend: frontend
+  tls: []
+  #  - secretName: mongodhara-tls
+  #    hosts:
+  #      - mongodhara.local

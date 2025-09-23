@@ -19,5 +19,9 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
-# Run with Uvicorn for development with reload
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Create a non-root user and switch to it
+RUN useradd --create-home appuser && chown -R appuser /app
+USER appuser
+
+# Run with Gunicorn using Uvicorn workers for production
+CMD ["gunicorn", "-c", "gunicorn.conf.py", "main:app"]

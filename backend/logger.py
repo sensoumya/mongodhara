@@ -10,5 +10,5 @@ logging.basicConfig(
 logger = logging.getLogger("mongo-api")
 
 # 🔇 Suppress overly verbose pymongo logs
-logging.getLogger("pymongo").setLevel(logging.WARNING)
-logging.getLogger("pymongo.topology").setLevel(logging.WARNING)
+logging.getLogger("pymongo").setLevel(logging.INFO)
+logging.getLogger("pymongo.topology").setLevel(logging.INFO)
