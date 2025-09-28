@@ -7,7 +7,7 @@ An intuitive interface to visualize and interact with MongoDB databases.
 Built with Svelte on the frontend and FastAPI on the backend, mongoDhārā provides a streamlined, modern experience for exploring your MongoDB data visually.
 
 ---
-![CodeQL](https://github.com/your-username/your-repo-name/actions/workflows/codeql.yml/badge.svg)
+![CodeQL](https://github.com/sensoumya/mongodhara/actions/workflows/codeql.yml/badge.svg)
 
 ---
 
