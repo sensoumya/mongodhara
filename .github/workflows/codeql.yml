@@ -36,8 +36,17 @@ jobs:
           languages: ${{ matrix.language }}
           queries: +security-and-quality
 
-      - name: Autobuild
+      # Autobuild for JavaScript only
+      - name: Autobuild JS
+        if: matrix.language == 'javascript'
         uses: github/codeql-action/autobuild@v3
+
+      # Manual build for Python
+      - name: Install Python dependencies
+        if: matrix.language == 'python'
+        run: |
+          cd backend
+          pip install -r requirements.txt
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
