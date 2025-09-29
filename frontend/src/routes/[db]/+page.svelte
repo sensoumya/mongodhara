@@ -131,8 +131,8 @@
 <svelte:head>
   <link
     rel="stylesheet"
-    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
-    integrity="sha512-SnH5WK+bZxgPHs44uW/r8W7Wj8n4Lz8mY9wA4164w2r86Lz8mFj+J/l+Y/sD+8L/LqN+g96N+A=="
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css"
+    integrity="sha512-Kc323vGBEqzTmouAECnVceyQqyqdsSiqLQISBL29aUW4U/M7pSPA/gEUZQqv1cwx4OnYxTxve5UMg5GT6L4JJg=="
     crossorigin="anonymous"
     referrerpolicy="no-referrer"
   />
@@ -329,3 +329,19 @@
     </div>
   </div>
 </div>
+
+<style>
+  /* Custom tooltip styles for long names */
+  .tooltip:before {
+    max-width: 300px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    text-align: left;
+    line-height: 1.4;
+  }
+
+  /* Ensure tooltip content wraps properly */
+  .tooltip[data-tip]:before {
+    content: attr(data-tip);
+  }
+</style>

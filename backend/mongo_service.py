@@ -3,11 +3,17 @@ from datetime import datetime
 import gridfs
 from bson import ObjectId
 from bson.errors import InvalidId
-from config import MONGO_URI
 from gridfs.errors import NoFile
-from logger import logger
 from pymongo import MongoClient
-from pymongo.errors import CollectionInvalid
+from pymongo.errors import CollectionInvalid, OperationFailure
+
+from config import MONGO_URI
+from logger import logger
+
+
+class DatabaseExistsError(Exception):
+    """Custom exception for database already exists scenarios"""
+    pass
 
 
 class MongoService:
@@ -35,8 +41,15 @@ class MongoService:
 
     def create_database(self, db_name, collection_name):
         logger.info(f"Creating database '{db_name}' with initial collection '{collection_name}'")
-        # Create collection explicitly - this makes both database and collection visible
-        # even when empty, just like MongoDB Compass does
+        
+        # Check if database already exists - if it does, this should be an error
+        existing_dbs = self.client.list_database_names()
+        if db_name in existing_dbs:
+            logger.error(f"Database '{db_name}' already exists")
+            raise DatabaseExistsError(f"Database '{db_name}' already exists")
+        
+        # Database doesn't exist, create collection (this will create the database too)
+        logger.info(f"Creating new database '{db_name}' with collection '{collection_name}'")
         self.client[db_name].create_collection(collection_name)
 
     def delete_database(self, db_name):

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { resolve } from "$app/paths";
+  import AuthExpiredOverlay from "$lib/components/AuthExpiredOverlay.svelte";
   import NotificationList from "$lib/components/NotificationList.svelte";
   import { nextTheme, setTheme, theme } from "$lib/stores/theme";
   import { onMount } from "svelte";
@@ -35,6 +36,9 @@
   class="min-h-screen bg-base-100 text-base-content selection:bg-primary/30"
   data-theme={$theme}
 >
+  <!-- Global error overlay -->
+  <AuthExpiredOverlay />
+
   <div class="relative min-h-screen">
     <header class="bg-base-200 shadow-md sticky top-0 z-50">
       <div
@@ -42,13 +46,15 @@
       >
         <a
           href={resolve("/")}
-          class="text-2xl text-neutral font-poppins flex items-center"
+          class="text-2xl font-poppins flex items-center"
           on:click={handleLogoClick}
         >
-          mongo
+          <span class="text-secondary/70">mongo</span>
           <span
             class="text-4xl font-bold font-roboto bg-primary text-primary-content px-2 py-1 rounded-lg inline-flex items-center ml-1"
-            >Dhārā
+            >Dhārā<span style="display:inline-block; transform: skewX(-10deg);"
+              >!</span
+            >
           </span>
         </a>
 

@@ -28,6 +28,39 @@
   const pageSize: number = 16;
   $: totalPages = Math.ceil(databasesResponse.total / pageSize);
 
+  // Track which database names are overflowing
+  let overflowingDbs = new Set<string>();
+
+  // Svelte action to check text overflow
+  function checkTextOverflow(element: HTMLElement, dbName: string) {
+    function updateOverflow() {
+      // Small delay to ensure CSS is applied
+      setTimeout(() => {
+        const isOverflowing = element.scrollWidth > element.clientWidth;
+
+        if (isOverflowing) {
+          overflowingDbs.add(dbName);
+        } else {
+          overflowingDbs.delete(dbName);
+        }
+        overflowingDbs = new Set(overflowingDbs); // Trigger reactivity
+      }, 10);
+    }
+
+    // Check initially
+    updateOverflow();
+
+    // Check on window resize
+    const resizeHandler = () => updateOverflow();
+    window.addEventListener("resize", resizeHandler);
+
+    return {
+      destroy() {
+        window.removeEventListener("resize", resizeHandler);
+      },
+    };
+  }
+
   // Computed validation state
   $: createFormValid =
     newDbName.trim() !== "" && newCollectionName.trim() !== "";
@@ -58,8 +91,7 @@
       );
       databasesResponse = response;
     } catch (e) {
-      addNotification("Failed to fetch databases.", "error");
-      console.error(e);
+      addNotification(e.message, "error");
     } finally {
       loading = false;
     }
@@ -119,8 +151,8 @@
       );
       await fetchDatabases();
     } catch (e) {
-      addNotification(`Failed to delete database: ${dbToDelete}.`, "error");
-      console.error(e);
+      addNotification(e.message, "error");
+      // addNotification(`Failed to delete database: ${dbToDelete}.`, "error");
     } finally {
       showDeleteModal = false;
       dbToDelete = null;
@@ -163,8 +195,7 @@
       currentPage = 1; // Go back to the first page to see the new database
       await fetchDatabases();
     } catch (e) {
-      addNotification(`Failed to create database: ${newDbName}.`, "error");
-      console.error(e);
+      addNotification(e.message, "error");
     }
   }
 
@@ -177,8 +208,8 @@
 <svelte:head>
   <link
     rel="stylesheet"
-    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
-    integrity="sha512-SnH5WK+bZxgPHs44uW/r8W7Wj8n4Lz8mY9wA4164w2r86Lz8mFj+J/l+Y/sD+8L/LqN+g96N+A=="
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css"
+    integrity="sha512-Kc323vGBEqzTmouAECnVceyQqyqdsSiqLQISBL29aUW4U/M7pSPA/gEUZQqv1cwx4OnYxTxve5UMg5GT6L4JJg=="
     crossorigin="anonymous"
     referrerpolicy="no-referrer"
   />
@@ -302,24 +333,37 @@
             </div>
           {:else}
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 p-1">
-              {#each databasesResponse.databases as db (db)}
+              {#each databasesResponse.databases as db, index (db)}
+                {@const rowNumber = Math.floor(index / 2) + 1}
+                {@const isLastRow = rowNumber === 8}
+                {@const hasTooltip = overflowingDbs.has(db)}
                 <div
-                  class="card group shadow-lg cursor-pointer hover:bg-accent/20 hover:shadow-xl transition-all duration-200 ease-in-out h-14"
+                  class="card group shadow-lg cursor-pointer hover:bg-accent/20 hover:shadow-xl transition-all duration-200 ease-in-out h-14 {hasTooltip
+                    ? `tooltip ${isLastRow ? 'tooltip-top' : 'tooltip-bottom'}`
+                    : ''}"
+                  data-tip={hasTooltip ? db : null}
                   on:click={() => handleDatabaseClick(db)}
+                  style="position: relative;"
                 >
                   <div
                     class="card-body p-3 flex-row justify-between items-center"
                   >
-                    <span
-                      class="card-title text-l poppins font-normal transition-colors duration-200"
+                    <div
+                      class="flex-1 mr-3 overflow-hidden"
+                      style="min-width: 0;"
                     >
-                      {db}
-                    </span>
+                      <span
+                        use:checkTextOverflow={db}
+                        class="card-title text-l poppins font-normal transition-colors duration-200 block overflow-hidden text-ellipsis whitespace-nowrap"
+                      >
+                        {db}
+                      </span>
+                    </div>
 
                     <button
                       on:click|stopPropagation={() => handleDeleteClick(db)}
-                      class="tooltip tooltip-left hover:text-error px-2 rounded-full cursor-pointer"
-                      data-tip={`Delete`}
+                      class="tooltip tooltip-left hover:text-error px-2 rounded-full cursor-pointer flex-shrink-0"
+                      data-tip="Delete"
                       aria-label={`Delete database ${db}`}
                     >
                       <i class="fas fa-trash-alt text-lg"></i>
@@ -457,5 +501,19 @@
 <style>
   .poppins {
     font-family: "Poppins", sans-serif;
+  }
+
+  /* Custom tooltip styles for long database names */
+  .tooltip:before {
+    max-width: 300px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    text-align: left;
+    line-height: 1.4;
+  }
+
+  /* Ensure tooltip content wraps properly */
+  .tooltip[data-tip]:before {
+    content: attr(data-tip);
   }
 </style>

@@ -9,21 +9,106 @@ import base64
 import binascii
 import io
 import json
+import re
 from typing import Optional
 
 import uvicorn
 
 # Load environment variables for Gunicorn compatibility
 from dotenv import load_dotenv
-from fastapi import Body, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    Body,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from logger import logger
-from mongo_service import MongoService
 from pydantic import BaseModel, Field
+from pymongo.errors import CollectionInvalid, OperationFailure
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from logger import logger
+from mongo_service import DatabaseExistsError, MongoService
+
 load_dotenv()
+
+# -------------------- Validation Functions --------------------
+
+def validate_database_name_for_create(db_name: str) -> None:
+    """Validate MongoDB database name for CREATE operations - strict MongoDB naming conventions."""
+    if not db_name or db_name.strip() == "":
+        raise HTTPException(status_code=400, detail="Database name cannot be empty")
+    
+    db_name = db_name.strip()
+    
+    # Check length (MongoDB limit is 64 bytes for database names)
+    if len(db_name.encode('utf-8')) > 64:
+        raise HTTPException(status_code=400, detail="Database name cannot exceed 64 bytes when UTF-8 encoded")
+    
+    # Check for invalid characters
+    invalid_chars = ['/', '\\', '.', ' ', '"', '*', '<', '>', ':', '|', '?', '$']
+    for char in invalid_chars:
+        if char in db_name:
+            raise HTTPException(status_code=400, detail=f"Database name cannot contain '{char}' character")
+    
+    # Check for reserved names (case-insensitive)
+    reserved_names = ['admin', 'local', 'config']
+    if db_name.lower() in reserved_names:
+        raise HTTPException(status_code=400, detail=f"'{db_name}' is a reserved database name")
+    
+    # Database names are case-insensitive, but let's enforce lowercase for consistency
+    if db_name != db_name.lower():
+        raise HTTPException(status_code=400, detail="Database name should be lowercase")
+
+
+def validate_database_name_for_access(db_name: str) -> None:
+    """Validate MongoDB database name for READ/ACCESS operations - permissive for existing data."""
+    if not db_name or db_name.strip() == "":
+        raise HTTPException(status_code=400, detail="Database name cannot be empty")
+    
+    # Only check if it's not empty - allow existing databases with any naming
+
+
+def validate_collection_name_for_create(col_name: str) -> None:
+    """Validate MongoDB collection name for CREATE operations - strict MongoDB naming conventions."""
+    if not col_name or col_name.strip() == "":
+        raise HTTPException(status_code=400, detail="Collection name cannot be empty")
+    
+    col_name = col_name.strip()
+    
+    # Check length (MongoDB doesn't have a strict limit, but 120 is reasonable)
+    if len(col_name.encode('utf-8')) > 120:
+        raise HTTPException(status_code=400, detail="Collection name cannot exceed 120 bytes when UTF-8 encoded")
+    
+    # Cannot start with 'system.' (reserved for MongoDB internal collections)
+    if col_name.startswith("system."):
+        raise HTTPException(status_code=400, detail="Collection name cannot start with 'system.' (reserved prefix)")
+    
+    # Cannot contain '$' character
+    if "$" in col_name:
+        raise HTTPException(status_code=400, detail="Collection name cannot contain '$' character")
+    
+    # Cannot contain null character
+    if "\x00" in col_name:
+        raise HTTPException(status_code=400, detail="Collection name cannot contain null character")
+    
+    # Cannot be empty string after stripping
+    if not col_name:
+        raise HTTPException(status_code=400, detail="Collection name cannot be empty or only whitespace")
+
+
+def validate_collection_name_for_access(col_name: str) -> None:
+    """Validate MongoDB collection name for READ/ACCESS operations - permissive for existing data."""
+    if not col_name or col_name.strip() == "":
+        raise HTTPException(status_code=400, detail="Collection name cannot be empty")
+    
+    # Only check if it's not empty - allow existing collections with any naming
 
 
 class PathDecodingMiddleware(BaseHTTPMiddleware):
@@ -49,34 +134,49 @@ class PathDecodingMiddleware(BaseHTTPMiddleware):
             # Get the path without leading slash
             path = request.url.path.lstrip('/')
             
-            # Skip decoding if path is empty or looks like a normal route
-            if not path or '/' in path[:10]:  # If path starts with normal route structure
+            # Skip decoding for docs, openapi.json, health check, and paths that already look like normal routes
+            if not path or path in ['docs', 'openapi.json', 'redoc'] or path.startswith(('docs/', 'openapi.json', 'redoc/')):
                 response = await call_next(request)
                 return response
             
-            # Try to decode the path as base64
-            try:
-                decoded_bytes = self._decode_base64_rfc4648(path)
-                decoded_path = decoded_bytes.decode('utf-8').strip()
+            # Check if path starts with version pattern (v1/, v2/, v3/, etc.) - handle versioned encoded paths
+            version_match = re.match(r'^(v\d+)/', path)
+            if version_match:
+                version_prefix = version_match.group(1)  # e.g., 'v1', 'v2'
+                encoded_part = path[len(version_prefix) + 1:]  # Remove 'v1/' or 'v2/' prefix
                 
-                # Validate that decoded path contains route structure
-                if decoded_path and ('/' in decoded_path or '?' in decoded_path):
-                    # Split path and query string if present
-                    if '?' in decoded_path:
-                        new_path, query_string = decoded_path.split('?', 1)
-                        # Update request scope
-                        request.scope["path"] = f"/{new_path}"
-                        request.scope["query_string"] = query_string.encode('utf-8')
-                    else:
-                        request.scope["path"] = f"/{decoded_path}"
-                    
-                    logger.debug(f"RFC 4648 Section 5 decoded: {path} -> {decoded_path}")
-                    
-            except (binascii.Error, UnicodeDecodeError, ValueError) as e:
-                # If decoding fails, continue with original path
-                logger.debug(f"Base64 decoding failed (expected for normal routes): {e}")
-                pass
+                if not encoded_part:
+                    response = await call_next(request)
+                    return response
                 
+                # Skip if the remaining path looks like a normal route (contains '/')
+                if '/' in encoded_part[:15]:  # Check first 15 chars for route structure
+                    response = await call_next(request)
+                    return response
+                    
+                # Try to decode the remaining path as base64
+                try:
+                    decoded_bytes = self._decode_base64_rfc4648(encoded_part)
+                    decoded_path = decoded_bytes.decode('utf-8').strip()
+                    
+                    # Validate that decoded path contains route structure
+                    if decoded_path and ('/' in decoded_path or '?' in decoded_path):
+                        # Split path and query string if present
+                        if '?' in decoded_path:
+                            new_path, query_string = decoded_path.split('?', 1)
+                            # Update request scope with version prefix
+                            request.scope["path"] = f"/{version_prefix}/{new_path}"
+                            request.scope["query_string"] = query_string.encode('utf-8')
+                        else:
+                            request.scope["path"] = f"/{version_prefix}/{decoded_path}"
+                        
+                        logger.debug(f"RFC 4648 Section 5 decoded {version_prefix} path: {path} -> {version_prefix}/{decoded_path}")
+                        
+                except (binascii.Error, UnicodeDecodeError, ValueError) as e:
+                    # If decoding fails, continue with original path
+                    logger.debug(f"Base64 decoding failed for {version_prefix} path (expected for normal routes): {e}")
+                    pass
+                    
         except Exception as e:
             logger.error(f"Error in path decoding middleware: {e}")
             # Continue with original path if any error occurs
@@ -117,13 +217,14 @@ app = FastAPI(
 # Add path decoding middleware first (before CORS)
 app.add_middleware(PathDecodingMiddleware)
 
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+v1_router = APIRouter(prefix="/v1", tags=["v1"])
 
 mongo = MongoService()
 
@@ -139,7 +240,7 @@ class CreateDocument(BaseModel):
 
 # -------------------- Database APIs --------------------
 
-@app.get("/db", summary="List databases with pagination and filter", tags=["Database Management"])
+@v1_router.get("/db", summary="List databases with pagination and filter", tags=["Database Management"])
 def list_databases(
     search: Optional[str] = Query(None, description="Search databases whose name contains this string"),
     sort: Optional[str] = Query("asc", pattern="^(asc|desc)$", description="Sort direction"),
@@ -155,37 +256,74 @@ def list_databases(
         raise HTTPException(status_code=500, detail="Failed to list databases")
 
 
-@app.post("/db/{db}", summary="Create a new database", tags=["Database Management"])
+@v1_router.post("/db/{db}", summary="Create a new database", tags=["Database Management"])
 def create_database(
     db: str,
     collection_name: str = Query(..., description="Name of the initial collection to create in the database")
 ):
-    # Validate collection name
-    if not collection_name or collection_name.strip() == "":
-        raise HTTPException(status_code=400, detail="Collection name cannot be empty")
+    # Validate database name for creation
+    validate_database_name_for_create(db)
     
-    if collection_name.startswith("system."):
-        raise HTTPException(status_code=400, detail="Collection name cannot start with 'system.'")
-    
-    if "$" in collection_name:
-        raise HTTPException(status_code=400, detail="Collection name cannot contain '$' character")
-    
-    if len(collection_name) > 120:
-        raise HTTPException(status_code=400, detail="Collection name cannot exceed 120 characters")
+    # Validate collection name for creation
+    validate_collection_name_for_create(collection_name)
     
     try:
         mongo.create_database(db, collection_name.strip())
         return {"message": f"Database '{db}' created successfully with collection '{collection_name.strip()}'"}
+    except DatabaseExistsError as e:
+        # Handle database already exists error specifically
+        logger.error(f"Database '{db}' already exists: {e}")
+        raise HTTPException(status_code=409, detail=f"Database '{db}' already exists")
+    except CollectionInvalid as e:
+        # Handle collection-specific validation errors
+        logger.error(f"Collection validation error for '{collection_name}' in DB '{db}': {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid collection name '{collection_name}': {str(e)}")
+    except OperationFailure as e:
+        # Handle other MongoDB operation errors (database existence is handled by DatabaseExistsError)
+        error_msg = str(e)
+        if "invalid" in error_msg.lower() and "name" in error_msg.lower():
+            logger.error(f"Invalid database name '{db}': {e}")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid database name '{db}': {e.details.get('errmsg', str(e))}"
+            )
+        else:
+            logger.error(f"MongoDB operation failed for database creation '{db}': {e}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to create database '{db}': {e.details.get('errmsg', str(e))}"
+            )
     except Exception as e:
         logger.error(f"Failed to create database '{db}' with collection '{collection_name}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to create database")
 
 
-@app.delete("/db/{db}", summary="Delete a database", tags=["Database Management"])
+@v1_router.delete("/db/{db}", summary="Delete a database", tags=["Database Management"])
 def delete_database(db: str):
+    # Validate database name for access
+    validate_database_name_for_access(db)
+    
     try:
         mongo.delete_database(db)
         return {"message": f"Database '{db}' deleted successfully"}
+    except OperationFailure as e:
+        # Handle MongoDB specific errors with user-friendly messages
+        error_msg = str(e)
+        if "prohibited" in error_msg.lower():
+            logger.error(f"Attempted to delete prohibited database '{db}': {e}")
+            raise HTTPException(
+                status_code=403, 
+                detail=f"Cannot delete database '{db}': {e.details.get('errmsg', 'Operation prohibited')}"
+            )
+        elif "not found" in error_msg.lower() or "does not exist" in error_msg.lower():
+            logger.error(f"Database '{db}' not found: {e}")
+            raise HTTPException(status_code=404, detail=f"Database '{db}' not found")
+        else:
+            logger.error(f"MongoDB operation failed for database '{db}': {e}")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Failed to delete database '{db}': {e.details.get('errmsg', str(e))}"
+            )
     except Exception as e:
         logger.error(f"Failed to delete database '{db}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to delete database")
@@ -193,7 +331,7 @@ def delete_database(db: str):
 
 # -------------------- Collection APIs --------------------
 
-@app.get("/db/{db}/col", summary="List collections with pagination and filter", tags=["Collection Management"])
+@v1_router.get("/db/{db}/col", summary="List collections with pagination and filter", tags=["Collection Management"])
 def list_collections(
     db: str,
     search: Optional[str] = Query(None, description="Search collection name contains"),
@@ -203,6 +341,9 @@ def list_collections(
     page: int = Query(1, gt=0, description="Page number"),
     page_size: int = Query(10, le=100, description="Number of collections per page (max 100)")
 ):
+    # Validate database name for access
+    validate_database_name_for_access(db)
+    
     try:
         return mongo.list_collections(db, search, sort, page, page_size, sort_field, sort_order)
     except Exception as e:
@@ -210,20 +351,74 @@ def list_collections(
         raise HTTPException(status_code=500, detail="Failed to list collections")
 
 
-@app.post("/db/{db}/col/{col}", summary="Create a new collection", tags=["Collection Management"])
+@v1_router.post("/db/{db}/col/{col}", summary="Create a new collection", tags=["Collection Management"])
 def create_collection(db: str, col: str):
+    # Validate database name for access
+    validate_database_name_for_access(db)
+    
+    # Validate collection name for creation
+    validate_collection_name_for_create(col)
+    
     try:
         mongo.create_collection(db, col)
         return {"message": f"Collection '{col}' created successfully in DB '{db}'"}
+    except CollectionInvalid as e:
+        # Handle collection already exists or validation errors
+        error_msg = str(e)
+        if "already exists" in error_msg.lower():
+            logger.error(f"Collection '{col}' already exists in DB '{db}': {e}")
+            raise HTTPException(status_code=409, detail=f"Collection '{col}' already exists in database '{db}'")
+        else:
+            logger.error(f"Collection validation error for '{col}' in DB '{db}': {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid collection name '{col}': {str(e)}")
+    except OperationFailure as e:
+        # Handle MongoDB specific errors (collection existence is handled by CollectionInvalid)
+        error_msg = str(e)
+        if "database does not exist" in error_msg.lower() or "not found" in error_msg.lower():
+            logger.error(f"Database '{db}' not found: {e}")
+            raise HTTPException(status_code=404, detail=f"Database '{db}' not found")
+        elif "invalid" in error_msg.lower() and "name" in error_msg.lower():
+            logger.error(f"Invalid collection name '{col}': {e}")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid collection name '{col}': {e.details.get('errmsg', str(e))}"
+            )
+        else:
+            logger.error(f"MongoDB operation failed for collection creation '{col}' in DB '{db}': {e}")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Failed to create collection '{col}': {e.details.get('errmsg', str(e))}"
+            )
     except Exception as e:
         logger.error(f"Failed to create collection '{col}' in DB '{db}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to create collection")
 
-@app.delete("/db/{db}/col/{col}", summary="Delete a collection", tags=["Collection Management"])
+@v1_router.delete("/db/{db}/col/{col}", summary="Delete a collection", tags=["Collection Management"])
 def delete_collection(db: str, col: str):
+    # Validate database name for access
+    validate_database_name_for_access(db)
+    
+    # Validate collection name for access
+    validate_collection_name_for_access(col)
+    
     try:
         mongo.delete_collection(db, col)
         return {"message": f"Collection '{col}' deleted successfully from DB '{db}'"}
+    except OperationFailure as e:
+        # Handle MongoDB specific errors
+        error_msg = str(e)
+        if "not found" in error_msg.lower() or "does not exist" in error_msg.lower():
+            logger.error(f"Collection '{col}' not found in DB '{db}': {e}")
+            raise HTTPException(status_code=404, detail=f"Collection '{col}' not found in database '{db}'")
+        elif "database does not exist" in error_msg.lower():
+            logger.error(f"Database '{db}' not found: {e}")
+            raise HTTPException(status_code=404, detail=f"Database '{db}' not found")
+        else:
+            logger.error(f"MongoDB operation failed for collection deletion '{col}' in DB '{db}': {e}")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Failed to delete collection '{col}': {e.details.get('errmsg', str(e))}"
+            )
     except Exception as e:
         logger.error(f"Failed to delete collection '{col}' from DB '{db}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to delete collection '{col}' from DB '{db}'")
@@ -231,8 +426,14 @@ def delete_collection(db: str, col: str):
 
 # -------------------- Document APIs --------------------
 
-@app.post("/db/{db}/col/{col}/doc", summary="Create a new document", tags=["Document Management"])
+@v1_router.post("/db/{db}/col/{col}/doc", summary="Create a new document", tags=["Document Management"])
 def create_document(db: str, col: str, payload: CreateDocument):
+    # Validate database name for access (document creation in existing db)
+    validate_database_name_for_access(db)
+    
+    # Validate collection name for access (document creation in existing collection)
+    validate_collection_name_for_access(col)
+    
     try:
         # Filter out _id field from payload if present
         filtered_data = {k: v for k, v in payload.data.items() if k != "_id"}
@@ -244,18 +445,37 @@ def create_document(db: str, col: str, payload: CreateDocument):
         raise HTTPException(status_code=500, detail="Failed to insert document")
 
 
-@app.post("/db/{db}/col/{col}/doc/query", summary="Query documents", tags=["Document Management"])
+
+@v1_router.post(
+    "/db/{db}/col/{col}/doc/query",
+    summary="Query documents (supports advanced MongoDB operators)",
+    tags=["Document Management"],
+    description="""
+    Query documents in a collection using any valid MongoDB filter operators (e.g., $or, $and, $in, $gt, $lt, etc.).
+    Example body:
+    {
+      "filter": {"$or": [{"age": {"$gt": 30}}, {"status": "active"}]}
+    }
+    """
+)
 def query_documents(
     db: str,
     col: str,
-    body: dict = Body(default={}, description="MongoDB filter query as JSON"),
+    body: dict = Body(default={}, description="MongoDB filter query as JSON. Supports all MongoDB operators."),
     sort_field: Optional[str] = Query(None, description="Field to sort by"),
     sort_order: int = Query(1, ge=-1, le=1, description="1=asc, -1=desc"),
     page: int = Query(1, gt=0, description="Page number"),
     page_size: int = Query(10, le=100, description="Number of documents per page")
 ):
+    # Validate database name for access
+    validate_database_name_for_access(db)
+    
+    # Validate collection name for access
+    validate_collection_name_for_access(col)
+    
     try:
         filter = body.get("filter", {})
+        # filter is passed as-is to PyMongo, so all advanced operators are supported
         return mongo.query_collection(db, col, filter, sort_field, sort_order, page, page_size)
     except ValueError as e:
         logger.error(f"Invalid request format for query: {e}", exc_info=True)
@@ -265,8 +485,14 @@ def query_documents(
         raise HTTPException(status_code=500, detail="Failed to query documents")
 
 
-@app.get("/db/{db}/col/{col}/doc/{doc_id}", summary="Get document by ID", tags=["Document Management"])
+@v1_router.get("/db/{db}/col/{col}/doc/{doc_id}", summary="Get document by ID", tags=["Document Management"])
 def get_document(db: str, col: str, doc_id: str):
+    # Validate database name for access
+    validate_database_name_for_access(db)
+    
+    # Validate collection name for access
+    validate_collection_name_for_access(col)
+    
     try:
         doc = mongo.get_document(db, col, doc_id)
         if not doc:
@@ -280,8 +506,14 @@ def get_document(db: str, col: str, doc_id: str):
         raise HTTPException(status_code=500, detail="Failed to retrieve document")
 
 
-@app.put("/db/{db}/col/{col}/doc/{doc_id}", summary="Update document by ID", tags=["Document Management"])
+@v1_router.put("/db/{db}/col/{col}/doc/{doc_id}", summary="Update document by ID", tags=["Document Management"])
 def update_document(db: str, col: str, doc_id: str, update: DocumentUpdate):
+    # Validate database name for access
+    validate_database_name_for_access(db)
+    
+    # Validate collection name for access
+    validate_collection_name_for_access(col)
+    
     try:
         # Filter out _id field from update data if present
         filtered_data = {k: v for k, v in update.data.items() if k != "_id"}
@@ -298,8 +530,14 @@ def update_document(db: str, col: str, doc_id: str, update: DocumentUpdate):
         raise HTTPException(status_code=500, detail="Failed to update document")
 
 
-@app.delete("/db/{db}/col/{col}/doc/{doc_id}", summary="Delete document by ID", tags=["Document Management"])
+@v1_router.delete("/db/{db}/col/{col}/doc/{doc_id}", summary="Delete document by ID", tags=["Document Management"])
 def delete_document(db: str, col: str, doc_id: str):
+    # Validate database name for access
+    validate_database_name_for_access(db)
+    
+    # Validate collection name for access
+    validate_collection_name_for_access(col)
+    
     try:
         deleted = mongo.delete_document(db, col, doc_id)
         if deleted == 0:
@@ -313,8 +551,14 @@ def delete_document(db: str, col: str, doc_id: str):
         raise HTTPException(status_code=500, detail="Failed to delete document")
 
 
-@app.get("/db/{db}/col/{col}/export", summary="Export collection", tags=["Data Import/Export"])
+@v1_router.get("/db/{db}/col/{col}/export", summary="Export collection", tags=["Data Import/Export"])
 def export_collection(db: str, col: str):
+    # Validate database name for access
+    validate_database_name_for_access(db)
+    
+    # Validate collection name for access
+    validate_collection_name_for_access(col)
+    
     try:
         return {"documents": mongo.export_collection(db, col)}
     except Exception as e:
@@ -322,12 +566,18 @@ def export_collection(db: str, col: str):
         raise HTTPException(status_code=500, detail="Failed to export collection")
 
 
-@app.post("/db/{db}/col/{col}/import", summary="Import documents from JSON file into a collection", tags=["Data Import/Export"])
+@v1_router.post("/db/{db}/col/{col}/import", summary="Import documents from JSON file into a collection", tags=["Data Import/Export"])
 def import_documents(
     db: str, 
     col: str, 
     file: UploadFile = File(..., description="JSON file containing documents to import")
 ):
+    # Validate database name for access
+    validate_database_name_for_access(db)
+    
+    # Validate collection name for access
+    validate_collection_name_for_access(col)
+    
     try:
         # Validate file type
         if not file.filename or not file.filename.endswith('.json'):
@@ -377,13 +627,16 @@ def import_documents(
 
 # -------------------- GridFS Bucket APIs --------------------
 
-@app.get("/db/{db}/gridfs/buckets", summary="List all GridFS buckets in a database", tags=["GridFS File Storage"])
+@v1_router.get("/db/{db}/gridfs/buckets", summary="List all GridFS buckets in a database", tags=["GridFS File Storage"])
 def list_gridfs_buckets(
     db: str,
     search: Optional[str] = Query(None, description="Search for bucket names containing this string"),
     page: int = Query(1, gt=0, description="Page number"),
     page_size: int = Query(10, le=100, description="Number of buckets per page")
 ):
+    # Validate database name for access
+    validate_database_name_for_access(db)
+    
     try:
         return mongo.list_gridfs_buckets(db, search, page, page_size)
     except Exception as e:
@@ -391,13 +644,19 @@ def list_gridfs_buckets(
         raise HTTPException(status_code=500, detail="Failed to list GridFS buckets")
 
 
-@app.post("/db/{db}/gridfs/{bucket_name}/upload", summary="Upload a file to a specific GridFS bucket", tags=["GridFS File Storage"])
+@v1_router.post("/db/{db}/gridfs/{bucket_name}/upload", summary="Upload a file to a specific GridFS bucket", tags=["GridFS File Storage"])
 def upload_file_to_bucket(
     db: str,
     bucket_name: str,
     file: UploadFile = File(...),
     metadata: str = Form(default="{}", description="JSON metadata for the file")
 ):
+    # Validate database name for access
+    validate_database_name_for_access(db)
+    
+    # Validate bucket name for access (use collection name validation as buckets are collections)
+    validate_collection_name_for_access(bucket_name)
+    
     try:
         metadata_dict = json.loads(metadata) if metadata != "{}" else {}
         
@@ -423,7 +682,7 @@ def upload_file_to_bucket(
         raise HTTPException(status_code=500, detail="Failed to upload file")
 
 
-@app.get("/db/{db}/gridfs/{bucket_name}/files", summary="List files in a specific GridFS bucket", tags=["GridFS File Storage"])
+@v1_router.get("/db/{db}/gridfs/{bucket_name}/files", summary="List files in a specific GridFS bucket", tags=["GridFS File Storage"])
 def list_files_in_bucket(
     db: str,
     bucket_name: str,
@@ -431,6 +690,12 @@ def list_files_in_bucket(
     page: int = Query(1, gt=0, description="Page number"),
     page_size: int = Query(10, le=100, description="Number of files per page")
 ):
+    # Validate database name for access
+    validate_database_name_for_access(db)
+    
+    # Validate bucket name for access
+    validate_collection_name_for_access(bucket_name)
+    
     try:
         return mongo.list_files_in_bucket(db, bucket_name, search, page, page_size)
     except Exception as e:
@@ -438,8 +703,14 @@ def list_files_in_bucket(
         raise HTTPException(status_code=500, detail="Failed to list files")
 
 
-@app.get("/db/{db}/gridfs/{bucket_name}/file/{file_id}", summary="Get file metadata from a specific bucket", tags=["GridFS File Storage"])
+@v1_router.get("/db/{db}/gridfs/{bucket_name}/file/{file_id}", summary="Get file metadata from a specific bucket", tags=["GridFS File Storage"])
 def get_file_metadata_from_bucket(db: str, bucket_name: str, file_id: str):
+    # Validate database name for access
+    validate_database_name_for_access(db)
+    
+    # Validate bucket name for access
+    validate_collection_name_for_access(bucket_name)
+    
     try:
         metadata = mongo.get_file_metadata_from_bucket(db, bucket_name, file_id)
         if not metadata:
@@ -453,8 +724,14 @@ def get_file_metadata_from_bucket(db: str, bucket_name: str, file_id: str):
         raise HTTPException(status_code=500, detail="Failed to get file metadata")
 
 
-@app.get("/db/{db}/gridfs/{bucket_name}/file/{file_id}/download", summary="Download file by ID from a specific bucket", tags=["GridFS File Storage"])
+@v1_router.get("/db/{db}/gridfs/{bucket_name}/file/{file_id}/download", summary="Download file by ID from a specific bucket", tags=["GridFS File Storage"])
 def download_file_from_bucket(db: str, bucket_name: str, file_id: str):
+    # Validate database name for access
+    validate_database_name_for_access(db)
+    
+    # Validate bucket name for access
+    validate_collection_name_for_access(bucket_name)
+    
     try:
         file_data = mongo.download_file_from_bucket(db, bucket_name, file_id)
         if not file_data:
@@ -475,8 +752,14 @@ def download_file_from_bucket(db: str, bucket_name: str, file_id: str):
         raise HTTPException(status_code=500, detail="Failed to download file")
 
 
-@app.get("/db/{db}/gridfs/{bucket_name}/filename/{filename}/download", summary="Download latest file by filename from a specific bucket", tags=["GridFS File Storage"])
+@v1_router.get("/db/{db}/gridfs/{bucket_name}/filename/{filename}/download", summary="Download latest file by filename from a specific bucket", tags=["GridFS File Storage"])
 def download_file_by_name_from_bucket(db: str, bucket_name: str, filename: str):
+    # Validate database name for access
+    validate_database_name_for_access(db)
+    
+    # Validate bucket name for access
+    validate_collection_name_for_access(bucket_name)
+    
     try:
         file_data = mongo.download_file_by_name_from_bucket(db, bucket_name, filename)
         if not file_data:
@@ -494,8 +777,14 @@ def download_file_by_name_from_bucket(db: str, bucket_name: str, filename: str):
         raise HTTPException(status_code=500, detail="Failed to download file")
 
 
-@app.delete("/db/{db}/gridfs/{bucket_name}/file/{file_id}", summary="Delete file by ID from a specific bucket", tags=["GridFS File Storage"])
+@v1_router.delete("/db/{db}/gridfs/{bucket_name}/file/{file_id}", summary="Delete file by ID from a specific bucket", tags=["GridFS File Storage"])
 def delete_file_from_bucket(db: str, bucket_name: str, file_id: str):
+    # Validate database name for access
+    validate_database_name_for_access(db)
+    
+    # Validate bucket name for access (use collection name validation as buckets are collections)
+    validate_collection_name_for_access(bucket_name)
+    
     try:
         deleted = mongo.delete_file_from_bucket(db, bucket_name, file_id)
         if not deleted:
@@ -509,8 +798,14 @@ def delete_file_from_bucket(db: str, bucket_name: str, file_id: str):
         raise HTTPException(status_code=500, detail="Failed to delete file")
 
 
-@app.delete("/db/{db}/gridfs/{bucket_name}/filename/{filename}", summary="Delete all files by filename from a specific bucket", tags=["GridFS File Storage"])
+@v1_router.delete("/db/{db}/gridfs/{bucket_name}/filename/{filename}", summary="Delete all files by filename from a specific bucket", tags=["GridFS File Storage"])
 def delete_files_by_name_from_bucket(db: str, bucket_name: str, filename: str):
+    # Validate database name for access
+    validate_database_name_for_access(db)
+    
+    # Validate bucket name for access
+    validate_collection_name_for_access(bucket_name)
+    
     try:
         deleted_count = mongo.delete_files_by_name_from_bucket(db, bucket_name, filename)
         if deleted_count == 0:
@@ -521,8 +816,14 @@ def delete_files_by_name_from_bucket(db: str, bucket_name: str, filename: str):
         raise HTTPException(status_code=500, detail="Failed to delete files")
 
 
-@app.delete("/db/{db}/gridfs/{bucket_name}", summary="Delete an entire GridFS bucket", tags=["GridFS File Storage"])
+@v1_router.delete("/db/{db}/gridfs/{bucket_name}", summary="Delete an entire GridFS bucket", tags=["GridFS File Storage"])
 def delete_bucket(db: str, bucket_name: str):
+    # Validate database name for access
+    validate_database_name_for_access(db)
+    
+    # Validate bucket name for access (use collection name validation as buckets are collections)
+    validate_collection_name_for_access(bucket_name)
+    
     try:
         mongo.delete_bucket(db, bucket_name)
         return {"message": f"Bucket '{bucket_name}' deleted successfully from DB '{db}'"}
@@ -531,6 +832,8 @@ def delete_bucket(db: str, bucket_name: str):
         raise HTTPException(status_code=500, detail="Failed to delete bucket")
 
 
+# Include the v1 router after all endpoints are defined
+app.include_router(v1_router)
 
 if __name__ == "__main__":
     uvicorn.run(

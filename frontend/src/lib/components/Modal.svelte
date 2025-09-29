@@ -1,5 +1,6 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
+
   export let title: string;
   export let message: string;
   export let onConfirm: () => Promise<void> | void = () => {};
@@ -15,12 +16,45 @@
     isLoading = true;
     try {
       if (onConfirm) {
-        // Ensure onConfirm is awaited if it's an async function
         await onConfirm();
       }
     } finally {
       isLoading = false;
     }
+  }
+
+  /**
+   * Splits the message into quoted and unquoted parts.
+   * Supports both 'single' and "double" quotes.
+   */
+  function parseMessage(message: string) {
+    const parts: { text: string; quoted: boolean }[] = [];
+    const regex = /(['"])(.*?)\1/g; // Match '...' or "..."
+    let lastIndex = 0;
+    let match;
+
+    while ((match = regex.exec(message))) {
+      if (match.index > lastIndex) {
+        parts.push({
+          text: message.slice(lastIndex, match.index),
+          quoted: false,
+        });
+      }
+      parts.push({
+        text: match[0], // keep quotes
+        quoted: true,
+      });
+      lastIndex = regex.lastIndex;
+    }
+
+    if (lastIndex < message.length) {
+      parts.push({
+        text: message.slice(lastIndex),
+        quoted: false,
+      });
+    }
+
+    return parts;
   }
 </script>
 
@@ -30,6 +64,7 @@
   role="dialog"
   aria-modal="true"
   aria-labelledby="modal-title"
+  on:click|self={onCancel}
 >
   <div
     class="card bg-base-100 text-base-content w-full max-w-sm p-6 shadow-xl border border-base-200 rounded-lg"
@@ -60,10 +95,19 @@
         </svg>
       </button>
     </div>
+
     {#if message}
-      <p class="mb-6 text-base-content/80">{message}</p>
+      <p class="mb-6 text-base-content/80 whitespace-pre-wrap">
+        {#each parseMessage(message) as part}
+          <span class={part.quoted ? "break-all" : "break-normal"}>
+            {part.text}
+          </span>
+        {/each}
+      </p>
     {/if}
+
     <slot />
+
     {#if onConfirm || onCancel}
       <div class="modal-action">
         {#if onCancel}
@@ -75,6 +119,7 @@
             {cancelButtonText}
           </button>
         {/if}
+
         {#if onConfirm}
           {#if confirmDisabled && validationMessage}
             <div class="tooltip tooltip-top" data-tip={validationMessage}>

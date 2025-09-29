@@ -213,7 +213,6 @@
    */
   async function fetchData(isInitialLoad: boolean = false) {
     if (!item) {
-      console.error("Item parameter is missing. Cannot fetch data.");
       loading = false;
       return;
     }
@@ -231,7 +230,6 @@
         await fetchGridFSFiles();
       }
     } catch (e) {
-      console.error("Error fetching data:", e);
       addNotification(
         `Failed to fetch ${isCollection ? "documents" : "files"}.`,
         "error"
@@ -275,34 +273,40 @@
       filter: hasQuery ? parsedQuery : {},
     };
 
-    console.log("Fetching documents with:", {
-      filter: body.filter,
-      sortField,
-      sortOrder,
-      currentPage,
-      pageSize,
-    });
+    try {
+      const response = await api.apiPost<PaginatedDocuments>(
+        `/db/${db}/col/${item}/doc/query?${queryParams.toString()}`,
+        body
+      );
 
-    const response = await api.apiPost<PaginatedDocuments>(
-      `/db/${db}/col/${item}/doc/query?${queryParams.toString()}`,
-      body
-    );
-    if (response && response.data) {
-      documentsResponse = {
-        docs: response.data,
-        total: response.total,
-        page: response.page,
-        page_size: response.page_size,
-      };
-    } else {
+      if (response && response.data) {
+        documentsResponse = {
+          docs: response.data,
+          total: response.total,
+          page: response.page,
+          page_size: response.page_size,
+        };
+      } else {
+        // Handle case where response structure is unexpected
+        documentsResponse = {
+          docs: [],
+          total: 0,
+          page: 1,
+          page_size: pageSize,
+        };
+        addNotification("Unexpected response format from server.", "warning");
+      }
+    } catch (e) {
+      // Handle API errors (network issues, server errors, auth errors, etc.)
       documentsResponse = {
         docs: [],
         total: 0,
         page: 1,
         page_size: pageSize,
       };
-      addNotification("Invalid API response received.", "error");
+      addNotification(e.message, "error");
     }
+
     allKeys = extractAllKeys(documentsResponse.docs);
   }
 
@@ -336,8 +340,7 @@
         };
       }
     } catch (e) {
-      addNotification("Failed to fetch GridFS files.", "error");
-      console.error(e);
+      addNotification(e.message, "error");
       documentsResponse = {
         docs: [],
         total: 0,
@@ -394,11 +397,7 @@
       }
       await fetchData();
     } catch (e) {
-      addNotification(
-        `Failed to delete ${isGridFS ? "file" : "document"}: ${docToDelete}.`,
-        "error"
-      );
-      console.error(e);
+      addNotification(e.message, "error");
     } finally {
       showDeleteModal = false;
       docToDelete = null;
@@ -428,16 +427,10 @@
     try {
       addNotification(`Starting download: ${doc.filename || doc._id}`, "info");
 
-      // Use fetch with the full API URL to get the file as a blob
-      const apiUrl = `http://localhost:8000/db/${db}/gridfs/${item}/file/${doc._id}/download`;
-      const response = await fetch(apiUrl);
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      // Get the file as a blob
-      const blob = await response.blob();
+      // Use the API store instead of direct fetch
+      const blob = await api.apiDownload(
+        `/db/${db}/gridfs/${item}/file/${doc._id}/download`
+      );
 
       // Create a download URL from the blob
       const downloadUrl = window.URL.createObjectURL(blob);
@@ -453,8 +446,7 @@
 
       addNotification(`File downloaded: ${doc.filename || doc._id}`, "success");
     } catch (e) {
-      addNotification(`Failed to download file: ${doc._id}`, "error");
-      console.error(e);
+      addNotification(e.message, "error");
     } finally {
       // Clear loading state
       isDownloading = false;
@@ -531,16 +523,10 @@
         "info"
       );
 
-      // Fetch the file content
-      const viewUrl = `http://localhost:8000/db/${db}/gridfs/${item}/file/${doc._id}/download`;
-      const response = await fetch(viewUrl);
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      // Get the file content as text
-      const fileContent = await response.text();
+      // Use the API store instead of direct fetch
+      const fileContent = await api.apiDownloadText(
+        `/db/${db}/gridfs/${item}/file/${doc._id}/download`
+      );
 
       // Try to parse as JSON for better formatting, otherwise use as plain text
       let documentContent;
@@ -574,17 +560,8 @@
       // Open the editor with the file content
       documentToEdit = documentContent;
       showEditorSidebar = true;
-
-      // addNotification(
-      //   `Opened ${getFileType(doc)} file: ${doc.filename}`,
-      //   "success"
-      // );
     } catch (e) {
-      addNotification(
-        `Failed to view file: ${doc.filename || doc._id}`,
-        "error"
-      );
-      console.error(e);
+      addNotification(e.message, "error");
     } finally {
       // Clear loading state
       isViewingFile = false;
@@ -649,7 +626,6 @@
       addNotification("Opening document editor...", "info");
     } catch (e) {
       addNotification("Failed to open document editor.", "error");
-      console.error(e);
     } finally {
       // Clear loading state
       isCreatingDocument = false;
@@ -723,11 +699,7 @@
       // Refresh the file list
       await fetchData();
     } catch (e) {
-      addNotification(
-        `Failed to upload file: ${selectedFile?.name || "Unknown"}`,
-        "error"
-      );
-      console.error(e);
+      addNotification(e.message, "error");
     } finally {
       isUploading = false;
     }
@@ -763,7 +735,6 @@
       addNotification("Opening file import dialog...", "info");
     } catch (e) {
       addNotification("Failed to open import dialog.", "error");
-      console.error(e);
     } finally {
       // Clear loading state
       isImportingFile = false;
@@ -810,11 +781,7 @@
       // Refresh the document list
       await fetchData();
     } catch (e) {
-      addNotification(
-        `Failed to import JSON file: ${selectedImportFile?.name || "Unknown"}`,
-        "error"
-      );
-      console.error(e);
+      addNotification(e.message, "error");
     } finally {
       isImporting = false;
     }
@@ -846,7 +813,6 @@
     const updatedDoc = event.detail;
     try {
       if (!updatedDoc._id) {
-        // Use api.apiPost for creating new documents
         delete updatedDoc._id; // Ensure _id is not sent for a new document
         await api.apiPost(`/db/${db}/col/${item}/doc`, {
           data: updatedDoc,
@@ -863,11 +829,7 @@
       showEditorSidebar = false;
       await fetchData();
     } catch (e) {
-      addNotification(
-        "Failed to save document. Please check the data format.",
-        "error"
-      );
-      console.error(e);
+      addNotification(e.message, "error");
     }
   }
 
@@ -1073,7 +1035,7 @@
                     <span class="loading loading-spinner loading-xs"></span>
                     Opening Editor...
                   {:else}
-                    <i class="fa-solid fa-file-circle-plus text-primary"></i>
+                    <i class="fa-solid fa-file-circle-plus"></i>
                     <span>Insert a document</span>
                   {/if}
                 </button>
@@ -1088,8 +1050,7 @@
                     <span class="loading loading-spinner loading-xs"></span>
                     Opening Import...
                   {:else}
-                    <i class="fa-solid fa-arrow-up-from-bracket text-primary"
-                    ></i>
+                    <i class="fa-solid fa-arrow-up-from-bracket"></i>
                     <span>Import a JSON file</span>
                   {/if}
                 </button>
@@ -1360,15 +1321,10 @@
       </label>
       <input
         type="file"
-        class="file-input file-input-bordered file-input-primary w-full"
+        class="file-input file-input-bordered file-input-secondary w-full"
         on:change={handleFileSelect}
         disabled={isUploading}
       />
-      {#if selectedFile}
-        <label class="label">
-          <span class="label-text-alt">Selected: {selectedFile.name}</span>
-        </label>
-      {/if}
     </div>
 
     <div class="form-control w-full mb-6">
@@ -1376,7 +1332,7 @@
         <span class="label-text">Metadata (JSON)</span>
       </label>
       <textarea
-        class="textarea textarea-bordered h-20"
+        class="textarea textarea-bordered w-full h-24 input-secondary"
         bind:value={uploadMetadata}
         placeholder={'{"key": "value"}'}
         disabled={isUploading}
@@ -1411,16 +1367,10 @@
       <input
         type="file"
         accept=".json"
-        class="file-input file-input-bordered file-input-primary w-full"
+        class="file-input file-input-bordered file-input-secondary w-full"
         on:change={handleImportFileSelect}
         disabled={isImporting}
       />
-      {#if selectedImportFile}
-        <label class="label">
-          <span class="label-text-alt">Selected: {selectedImportFile.name}</span
-          >
-        </label>
-      {/if}
     </div>
 
     <div class="form-control w-full mb-6">
@@ -1536,5 +1486,19 @@
   /* Ensure dropdown appears above other elements */
   .dropdown-content {
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  }
+
+  /* Custom tooltip styles for long text */
+  .tooltip:before {
+    max-width: 300px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    text-align: left;
+    line-height: 1.4;
+  }
+
+  /* Ensure tooltip content wraps properly */
+  .tooltip[data-tip]:before {
+    content: attr(data-tip);
   }
 </style>

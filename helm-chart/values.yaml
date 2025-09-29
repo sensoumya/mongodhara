@@ -43,6 +43,16 @@ backend:
     - name: MONGO_URI
       value: "mongodb://localhost:27017"
   
+  # MongoDB URI configuration - supports direct value or secret reference
+  mongoUri:
+    # Option 1: Direct value (will override env.MONGO_URI if provided)
+    value: ""
+    # Option 2: Reference to secret
+    secretRef:
+      enabled: false
+      secretName: ""
+      key: "MONGO_URI"
+  
   # Additional environment variables from ConfigMap or Secret
   envFrom: []
   
@@ -53,6 +63,23 @@ backend:
     # requests:
     #   cpu: 100m
     #   memory: 128Mi
+  
+  # Health check probes
+  probes:
+    liveness:
+      enabled: false
+      path: /
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readiness:
+      enabled: false
+      path: /
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
   
   autoscaling:
     enabled: false
@@ -99,7 +126,7 @@ frontend:
   
   # Environment variables
   env:
-    - name: REMOTE_API_BASE_URL
+    - name: VITE_API_BASE
       value: ""
   
   # Additional environment variables from ConfigMap or Secret
@@ -112,6 +139,23 @@ frontend:
     # requests:
     #   cpu: 100m
     #   memory: 128Mi
+  
+  # Health check probes
+  probes:
+    liveness:
+      enabled: false
+      path: /
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readiness:
+      enabled: false
+      path: /
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
   
   autoscaling:
     enabled: false
@@ -127,56 +171,56 @@ frontend:
 
 # Ingress configuration
 ingress:
-  enabled: true
-  className: "nginx"
-  annotations:
-    # Rewrite API paths to remove /mongodhara/api prefix
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
+  # Shared configuration for both ingresses
+  shared:
+    className: "nginx"
+    host: "mongodhara.local"
     
-    # CORS Configuration
-    nginx.ingress.kubernetes.io/enable-cors: "true"
-    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
-    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, PATCH, OPTIONS"
-    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization"
-    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
-    nginx.ingress.kubernetes.io/cors-max-age: "86400"
+    # Common annotations applied to both ingresses
+    annotations:
+      # CORS Configuration
+      nginx.ingress.kubernetes.io/enable-cors: "true"
+      nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+      nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+      nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization"
+      nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+      nginx.ingress.kubernetes.io/cors-max-age: "86400"
+      
+      # Security headers
+      nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "30"
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    # Shared TLS configuration
+    tls:
+      enabled: false
+      secretName: ""
+
+  # Frontend ingress specific settings
+  frontend:
+    enabled: true
+    path: /mdhara
+    pathType: Prefix
     
-    # Production Rate Limiting
-    nginx.ingress.kubernetes.io/rate-limit-rps: "100"          # 100 requests per second per IP
-    nginx.ingress.kubernetes.io/rate-limit-rpm: "6000"        # 6000 requests per minute per IP
-    nginx.ingress.kubernetes.io/rate-limit-connections: "10"   # Max 10 concurrent connections per IP
+    # Frontend-specific annotations (merged with shared)
+    # Keep empty if no frontend-specific annotations needed
+    annotations: {}
+
+  # Backend API ingress specific settings  
+  backend:
+    enabled: true
+    path: /mdhara/api(/|$)(.*)
+    pathType: ImplementationSpecific
     
-    # Rate limit response codes and headers
-    nginx.ingress.kubernetes.io/limit-rps: "100"
-    nginx.ingress.kubernetes.io/limit-rpm: "6000" 
-    nginx.ingress.kubernetes.io/limit-connections: "10"
-    
-    # Custom rate limit response
-    nginx.ingress.kubernetes.io/custom-http-errors: "429"
-    
-    # Additional security headers
-    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "30"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
-    
-    # Additional annotations can be added here
-    # kubernetes.io/tls-acme: "true"
-  hosts:
-    - host: mongodhara.local
-      paths:
-        # API routes - strip /mongodhara/api prefix  
-        - path: /mongodhara/api(/)(.*)
-          pathType: ImplementationSpecific
-          backend: backend
-        # Additional API paths can be added here
-        # - path: /mongodhara/services(/|$)(.*)
-        #   pathType: ImplementationSpecific  
-        #   backend: backend
-        # Frontend routes - keep /mongodhara as base path
-        - path: /mongodhara
-          pathType: Prefix
-          backend: frontend
-  tls: []
-  #  - secretName: mongodhara-tls
-  #    hosts:
-  #      - mongodhara.local
+    # Backend-specific annotations (merged with shared)
+    annotations:
+      nginx.ingress.kubernetes.io/rewrite-target: /$2
+      
+      # API-specific rate limiting
+      nginx.ingress.kubernetes.io/rate-limit-rps: "100"
+      nginx.ingress.kubernetes.io/rate-limit-rpm: "6000"
+      nginx.ingress.kubernetes.io/rate-limit-connections: "10"
+      nginx.ingress.kubernetes.io/limit-rps: "100"
+      nginx.ingress.kubernetes.io/limit-rpm: "6000" 
+      nginx.ingress.kubernetes.io/limit-connections: "10"
+      nginx.ingress.kubernetes.io/custom-http-errors: "429"

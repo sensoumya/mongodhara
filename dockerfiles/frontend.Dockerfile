@@ -4,11 +4,11 @@ FROM node:20 AS builder
 WORKDIR /app
 
 # Copy package files to the working directory (fixed with trailing /)
-COPY package*.json ./
+COPY frontend/package*.json ./
 RUN npm install
 
 # Copy the rest of the application code
-COPY . .
+COPY frontend/ .
 
 # Build the application
 RUN npm run build
@@ -19,7 +19,7 @@ FROM node:20-slim
 WORKDIR /app
 
 # Copy package files for production dependencies (fixed with trailing /)
-COPY package*.json ./
+COPY frontend/package*.json ./
 RUN npm install --production
 
 # Copy the built application from the builder stage

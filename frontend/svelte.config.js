@@ -7,7 +7,7 @@ const config = {
 
   kit: {
     adapter: adapter(),
-    paths: { base: '/mongodhara' }
+    paths: { base: '/mdhara' }
   }
 };
 
