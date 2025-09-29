@@ -43,6 +43,39 @@
   export let totalPages = Math.ceil(gridfsResponse.total / pageSize);
   $: totalPages = Math.ceil(gridfsResponse.total / pageSize);
 
+  // Track which bucket names are overflowing
+  let overflowingBuckets = new Set<string>();
+
+  // Svelte action to check text overflow
+  function checkTextOverflow(element: HTMLElement, bucketName: string) {
+    function updateOverflow() {
+      // Small delay to ensure CSS is applied
+      setTimeout(() => {
+        const isOverflowing = element.scrollWidth > element.clientWidth;
+
+        if (isOverflowing) {
+          overflowingBuckets.add(bucketName);
+        } else {
+          overflowingBuckets.delete(bucketName);
+        }
+        overflowingBuckets = new Set(overflowingBuckets); // Trigger reactivity
+      }, 10);
+    }
+
+    // Check initially
+    updateOverflow();
+
+    // Check on window resize
+    const resizeHandler = () => updateOverflow();
+    window.addEventListener("resize", resizeHandler);
+
+    return {
+      destroy() {
+        window.removeEventListener("resize", resizeHandler);
+      },
+    };
+  }
+
   /**
    * Navigates to the GridFS bucket detail page.
    * @param bucketName The name of the bucket to navigate to.
@@ -71,14 +104,13 @@
       );
       gridfsResponse = response;
     } catch (e) {
-      // Silently handle GridFS not found - no alert needed
+      addNotification(e.message, "error");
       gridfsResponse = {
         buckets: [],
         total: 0,
         page: 1,
         page_size: 16,
       };
-      console.error(e);
     } finally {
       loading = false;
     }
@@ -112,8 +144,7 @@
       );
       await fetchGridFSBuckets();
     } catch (e) {
-      addNotification(`Failed to delete bucket: ${bucketToDelete}.`, "error");
-      console.error(e);
+      addNotification(e.message, "error");
     } finally {
       showDeleteBucketModal = false;
       bucketToDelete = null;
@@ -175,8 +206,7 @@
       currentPage = 1;
       await fetchGridFSBuckets();
     } catch (e) {
-      addNotification(`Failed to create bucket: ${newBucketName}.`, "error");
-      console.error(e);
+      addNotification(e.message, "error");
     }
   }
 </script>
@@ -212,9 +242,15 @@
         </div>
       {:else}
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 p-1">
-          {#each gridfsResponse.buckets as bucket (bucket.bucket_name)}
+          {#each gridfsResponse.buckets as bucket, index (bucket.bucket_name)}
+            {@const rowNumber = Math.floor(index / 2) + 1}
+            {@const isLastRow = rowNumber === 8}
+            {@const hasTooltip = overflowingBuckets.has(bucket.bucket_name)}
             <div
-              class="card group shadow-lg cursor-pointer hover:bg-accent/20 hover:shadow-xl transition-all duration-200 ease-in-out h-14"
+              class="card group shadow-lg cursor-pointer hover:bg-accent/20 hover:shadow-xl transition-all duration-200 ease-in-out h-14 {hasTooltip
+                ? `tooltip ${isLastRow ? 'tooltip-top' : 'tooltip-bottom'}`
+                : ''}"
+              data-tip={hasTooltip ? bucket.bucket_name : null}
               role="button"
               tabindex="0"
               on:click={() => handleBucketClick(bucket.bucket_name)}
@@ -224,12 +260,18 @@
                   handleBucketClick(bucket.bucket_name);
                 }
               }}
+              style="position: relative;"
             >
               <div class="card-body p-3 flex-row justify-between items-center">
-                <span class="card-title text-l poppins font-normal">
-                  {bucket.bucket_name}
-                </span>
-                <div class="flex items-center space-x-2">
+                <div class="flex-1 mr-3 overflow-hidden" style="min-width: 0;">
+                  <span
+                    use:checkTextOverflow={bucket.bucket_name}
+                    class="card-title text-l poppins font-normal block overflow-hidden text-ellipsis whitespace-nowrap"
+                  >
+                    {bucket.bucket_name}
+                  </span>
+                </div>
+                <div class="flex items-center space-x-2 flex-shrink-0">
                   <span class="text-sm text-secondary">
                     {bucket.files_count} files
                   </span>
@@ -287,7 +329,7 @@
           id="newBucketName"
           bind:value={newBucketName}
           placeholder="Enter bucket name"
-          class="input input-bordered w-full"
+          class="input input-bordered w-full input-secondary"
         />
       </div>
 
@@ -299,7 +341,7 @@
           type="file"
           id="bucketFile"
           on:change={handleFileSelect}
-          class="file-input file-input-bordered file-input-primary w-full"
+          class="file-input file-input-bordered file-input-secondary w-full"
         />
       </div>
 
@@ -311,7 +353,7 @@
           id="bucketMetadata"
           bind:value={bucketMetadataString}
           placeholder={`{"key": "value"}`}
-          class="textarea textarea-bordered w-full h-24"
+          class="textarea textarea-bordered w-full h-24 input-secondary"
         ></textarea>
       </div>
     </div>
@@ -321,5 +363,19 @@
 <style>
   .poppins {
     font-family: "Poppins", sans-serif;
+  }
+
+  /* Custom tooltip styles for long bucket names */
+  .tooltip:before {
+    max-width: 300px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    text-align: left;
+    line-height: 1.4;
+  }
+
+  /* Ensure tooltip content wraps properly */
+  .tooltip[data-tip]:before {
+    content: attr(data-tip);
   }
 </style>

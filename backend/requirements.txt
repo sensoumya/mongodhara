@@ -3,3 +3,6 @@ uvicorn[standard]
 gunicorn
 pymongo
 python-dotenv
+python-multipart
+pydantic
+starlette

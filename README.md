@@ -1,20 +1,96 @@
-<!-- Favicon and Title -->
-<p><img src="frontend/static/favicon.ico" alt="favicon" width="48" height="48" style="vertical-align:middle;margin-right:12px;" /> <span style="font-size:2.5em;font-weight:bold;vertical-align:middle;">mongoDhārā</span></p>
+<h1 style="font-size:3.2em; font-weight:800; margin-top: 0.5em; margin-bottom: 0.5em;">
+  <span style="
+    font-size:0.85em;
+    opacity:0.8;
+    color:black;
+    background:transparent;
+    text-shadow:
+      -1px -1px 0 white,
+       1px -1px 0 white,
+      -1px  1px 0 white,
+       1px  1px 0 white;
+  ">
+    mongo
+  </span>
+  <span style="color:white; background:black; padding:6px 14px; border-radius:6px;">
+    Dhārā<span style="display:inline-block; transform: skewX(-10deg);">!</span>
+  </span>
+</h1>
+
+[![CodeQL](https://github.com/sensoumya/mongodhara/actions/workflows/codeql.yml/badge.svg)](https://github.com/sensoumya/mongodhara/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Node.js](https://img.shields.io/badge/node.js-16+-green.svg)](https://nodejs.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.117+-009688.svg)](https://fastapi.tiangolo.com/)
+[![Svelte](https://img.shields.io/badge/Svelte-4+-ff3e00.svg)](https://svelte.dev/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Compatible-47A248.svg)](https://www.mongodb.com/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-Ready-326CE5.svg)](https://kubernetes.io/)
+
+_MongoDB management made elegant, fast, and intuitive._
+
+**mongoDhārā** is a blazing-fast web UI for MongoDB — built with Svelte & FastAPI.  
+Manage databases, collections, documents, and GridFS visually with zero overhead.
 
 ---
 
-An intuitive interface to visualize and interact with MongoDB databases.  
-Built with Svelte on the frontend and FastAPI on the backend, mongoDhārā provides a streamlined, modern experience for exploring your MongoDB data visually.
+## 📖 Table of Contents
+
+- [✨ Key Features](#-key-features)
+- [🚀 Quick Start with Helm](#-quick-start-with-helm)
+- [📦 Helm Chart Deployment](#-helm-chart-deployment)
+- [🐳 Build & Push Docker Images](#-build--push-docker-images)
+- [🧑‍💻 Local Development](#-local-development)
+- [📁 Project Structure](#-project-structure)
+- [🔧 Environment Variables](#-environment-variables)
+- [📊 Monitoring and Scaling](#-monitoring-and-scaling)
+- [🛡️ Security](#️-security)
+- [🤝 Contributing](#-contributing)
+- [⚖️ Legal Notice](#-legal-notice)
+- [📄 License](#-license)
 
 ---
 
-## Tech Stack
+## 💡 Why mongoDhārā?
 
-- **Frontend:** Svelte
-- **Backend:** FastAPI (Python)
-- **Database:** MongoDB (visualized, but not included)
-- **Containerization:** Docker
-- **Deployment:** Kubernetes with Helm charts supported
+- Designed for speed — near-raw MongoDB performance with minimal overhead
+- Clean, modern UI for effortless data exploration and management
+- Full control: databases, collections, documents, GridFS, and bulk operations
+- Scalable deployment with Kubernetes and Helm support
+- Open-source and developer-friendly
+
+---
+
+## ✨ **Key Features**
+
+### ⚡ **High-Performance UI**
+
+- Near-raw MongoDB speed with minimal overhead (PyMongo-powered)
+- Optimized queries with fast pagination and filtering
+- Responsive layout with light/dark theme support
+- Real-time status updates and notifications
+- Intuitive navigation with breadcrumbs and global search
+
+### 🗂️ **Database, Collection & Document Management**
+
+- Create, rename, and delete databases and collections
+- Browse, query, and edit documents with a rich JSON editor
+- Advanced query builder with filtering, sorting, and aggregation
+- Full CRUD support with bulk import/export of documents (JSON)
+- Run large-scale bulk operations with progress and error tracking
+- MongoDB-compliant naming and validation
+
+### 📁 **GridFS File Storage**
+
+- Upload, download, and manage files with GridFS
+- Search files by name or metadata
+- Create and manage multiple storage buckets
+
+### 🧾 **Rich JSON Editing**
+
+- Syntax-highlighted editor with real-time validation
+- Inline error detection and formatting
+- Auto-format and schema assistance
 
 ---
 
@@ -27,13 +103,16 @@ The easiest way to deploy mongoDhārā is using the included Helm chart:
 git clone <your-repo-url>
 cd mongodhara
 
-# Deploy with default configuration
-helm install mongodhara ./helm-chart
-
-# Or deploy with custom MongoDB URI
+# Deploy with custom MongoDB URI and images
 helm install mongodhara ./helm-chart \
+  --set backend.image.repository=mongodhara/backend \
+  --set backend.image.tag=1.0.0 \
+  --set frontend.image.repository=mongodhara/frontend \
+  --set frontend.image.tag=1.0.0 \
   --set backend.env[0].value="mongodb://your-mongo-host:27017/yourdb"
 ```
+
+> 💡 **For production deployments and advanced configuration options, see the detailed Helm Chart Deployment section below.**
 
 ---
 
@@ -176,141 +255,68 @@ kubectl port-forward svc/mongodhara-dev-backend 8000:80 &
 
 #### Frontend Configuration
 
-| Parameter                      | Description                                       | Default               |
-| ------------------------------ | ------------------------------------------------- | --------------------- |
-| `frontend.enabled`             | Enable frontend deployment                        | `true`                |
-| `frontend.replicaCount`        | Number of frontend replicas                       | `1`                   |
-| `frontend.image.repository`    | Frontend image repository                         | `mongodhara/frontend` |
-| `frontend.image.tag`           | Frontend image tag (defaults to Chart.AppVersion) | `""`                  |
-| `frontend.image.pullPolicy`    | Image pull policy                                 | `IfNotPresent`        |
-| `frontend.service.type`        | Service type                                      | `ClusterIP`           |
-| `frontend.service.port`        | Service port                                      | `80`                  |
-| `frontend.service.targetPort`  | Container port                                    | `3000`                |
-| `frontend.env[0].name`         | API base URL environment variable                 | `REMOTE_API_BASE_URL` |
-| `frontend.env[0].value`        | Backend API URL                                   | `""`                  |
-| `frontend.resources`           | CPU/Memory resource requests and limits           | `{}`                  |
-| `frontend.autoscaling.enabled` | Enable horizontal pod autoscaler                  | `false`               |
+| Parameter                   | Description                                       | Default               |
+| --------------------------- | ------------------------------------------------- | --------------------- |
+| `frontend.enabled`          | Enable frontend deployment                        | `true`                |
+| `frontend.replicaCount`     | Number of frontend replicas                       | `1`                   |
+| `frontend.image.repository` | Frontend image repository                         | `mongodhara/frontend` |
+| `frontend.image.tag`        | Frontend image tag (defaults to Chart.AppVersion) | `""`                  |
+| `frontend.image.pullPolicy` | Image pull policy                                 | `IfNotPresent`        |
+| `frontend.service.type`     | Service type                                      | `ClusterIP`           |
+| `frontend.service.port`     | Service port                                      | `80`                  |
+| `frontend.env[0].name`      | API base URL environment variable                 | `REMOTE_API_BASE_URL` |
+| `frontend.env[0].value`     | Backend API URL                                   | `http://backend:8000` |
+| `frontend.resources`        | CPU/Memory resource requests and limits           | `{}`                  |
 
 #### Ingress Configuration
 
-| Parameter                | Description         | Default            |
-| ------------------------ | ------------------- | ------------------ |
-| `ingress.enabled`        | Enable ingress      | `true`             |
-| `ingress.className`      | Ingress class name  | `""`               |
-| `ingress.annotations`    | Ingress annotations | `{}`               |
-| `ingress.hosts[0].host`  | Hostname            | `mongodhara.local` |
-| `ingress.hosts[0].paths` | Path configurations | See values.yaml    |
-| `ingress.tls`            | TLS configuration   | `[]`               |
+| Parameter             | Description                 | Default |
+| --------------------- | --------------------------- | ------- |
+| `ingress.enabled`     | Enable ingress controller   | `false` |
+| `ingress.className`   | Ingress class name          | `""`    |
+| `ingress.annotations` | Annotations for ingress     | `{}`    |
+| `ingress.hosts`       | List of hostnames and paths | `[]`    |
+| `ingress.tls`         | TLS configuration           | `[]`    |
 
-### Management Commands
+---
 
-```bash
-# View current releases
-helm list
+## 🐳 Build & Push Docker Images
 
-# Upgrade deployment
-helm upgrade mongodhara ./helm-chart -f production-values.yaml
-
-# Check deployment status
-helm status mongodhara
-
-# View deployment history
-helm history mongodhara
-
-# Rollback to previous version
-helm rollback mongodhara
-
-# Uninstall
-helm uninstall mongodhara
-
-# Dry run (validate without installing)
-helm install mongodhara ./helm-chart --dry-run
-
-# Generate manifests without installing
-helm template mongodhara ./helm-chart -f production-values.yaml
-```
-
-### Troubleshooting
-
-#### Check Pod Status
+Build and push images for backend and frontend:
 
 ```bash
-kubectl get pods -l app.kubernetes.io/instance=mongodhara
-kubectl describe pod <pod-name>
-```
-
-#### View Logs
-
-```bash
-# Backend logs
-kubectl logs -f deployment/mongodhara-backend
-
-# Frontend logs
-kubectl logs -f deployment/mongodhara-frontend
-
-# Follow logs from all pods
-kubectl logs -f -l app.kubernetes.io/instance=mongodhara --all-containers=true
-```
-
-#### Debug Services
-
-```bash
-# Check services
-kubectl get svc -l app.kubernetes.io/instance=mongodhara
-
-# Check ingress
-kubectl get ingress -l app.kubernetes.io/instance=mongodhara
-kubectl describe ingress mongodhara
-```
-
-#### Port Forward for Local Testing
-
-```bash
-# Frontend
-kubectl port-forward svc/mongodhara-frontend 8080:80
-
 # Backend
-kubectl port-forward svc/mongodhara-backend 8000:80
+docker build -t your-registry.com/mongodhara/backend:1.0.0 ./backend
+docker push your-registry.com/mongodhara/backend:1.0.0
 
-# Access frontend at http://localhost:8080
-# Access backend at http://localhost:8000
+# Frontend
+docker build -t your-registry.com/mongodhara/frontend:1.0.0 ./frontend
+docker push your-registry.com/mongodhara/frontend:1.0.0
 ```
+
+Replace `your-registry.com` with your Docker registry URL.
 
 ---
 
-## 🐳 Docker Setup (Alternative)
+## 🧑‍💻 Local Development
 
-If you prefer Docker without Kubernetes:
+### Prerequisites
 
-### Frontend
+- Python 3.9+
+- Node.js 16+
+- MongoDB server running locally
 
-```bash
-docker build -f dockerfiles/frontend.Dockerfile -t mongodhara-frontend .
-docker run -p 3000:3000 mongodhara-frontend
-```
-
-### Backend
-
-```bash
-docker build -f dockerfiles/backend.Dockerfile -t mongodhara-backend .
-docker run -p 8000:8000 -e MONGO_URI="mongodb://host.docker.internal:27017" mongodhara-backend
-```
-
----
-
-## 🛠️ Local Development
-
-### Backend Setup
+### Setup Backend
 
 ```bash
 cd backend
-python3 -m venv venv
+python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### Frontend Setup
+### Setup Frontend
 
 ```bash
 cd frontend
@@ -318,98 +324,88 @@ npm install
 npm run dev
 ```
 
+Open your browser at `http://localhost:5173` (or the port indicated).
+
 ---
 
 ## 📁 Project Structure
 
-```
+```plaintext
 mongodhara/
-├── backend/                    # FastAPI backend
-│   ├── main.py
-│   ├── requirements.txt
-│   └── ...
-├── frontend/                   # Svelte frontend
-│   ├── src/
-│   ├── package.json
-│   └── ...
-├── helm-chart/                 # Helm chart for Kubernetes
-│   ├── Chart.yaml
-│   ├── values.yaml
-│   ├── templates/
-│   └── README.md
-├── dockerfiles/               # Docker build files
-│   ├── backend.Dockerfile
-│   └── frontend.Dockerfile
-└── README.md
+├── backend/               # FastAPI backend source code
+│   ├── main.py            # App entry point
+│   ├── api/               # API endpoints and routes
+│   ├── models/            # Pydantic models & schemas
+│   └── db/                # MongoDB access & utilities
+├── frontend/              # Svelte frontend source code
+│   ├── src/               # Svelte components & pages
+│   ├── static/            # Static assets (favicon, images)
+│   └── vite.config.js     # Vite build config
+├── helm-chart/            # Helm chart for Kubernetes deployment
+│   ├── templates/         # K8s manifests templates
+│   ├── values.yaml        # Default chart values
+│   └── Chart.yaml         # Chart metadata
+├── README.md              # This documentation
+└── LICENSE                # License info
 ```
 
 ---
 
 ## 🔧 Environment Variables
 
-### Backend
-
-- `MONGO_URI`: MongoDB connection string
-- `LOG_LEVEL`: Logging level (default: INFO)
-
-### Frontend
-
-- `REMOTE_API_BASE_URL`: Backend API base URL
+| Variable              | Description                       | Default                     |
+| --------------------- | --------------------------------- | --------------------------- |
+| `MONGO_URI`           | MongoDB connection string         | `mongodb://localhost:27017` |
+| `REMOTE_API_BASE_URL` | Backend API base URL for frontend | `http://localhost:8000`     |
 
 ---
 
 ## 📊 Monitoring and Scaling
 
-The Helm chart includes support for:
-
-- **Horizontal Pod Autoscaling (HPA)**: Automatically scale based on CPU/memory usage
-- **Resource Limits**: Prevent resource exhaustion
-- **Health Checks**: Liveness and readiness probes
-- **Service Accounts**: Proper RBAC setup
-
-Enable autoscaling:
-
-```yaml
-backend:
-  autoscaling:
-    enabled: true
-    minReplicas: 2
-    maxReplicas: 10
-    targetCPUUtilizationPercentage: 70
-```
+- Configure resource limits and requests in Helm values
+- Enable Horizontal Pod Autoscaler (HPA) for backend for CPU-based scaling
+- Use Kubernetes native monitoring tools like Prometheus + Grafana
+- Leverage logging (e.g., Fluentd, EFK stack) for production debugging
 
 ---
 
 ## 🛡️ Security
 
-- Service accounts created for each component
-- Security contexts configurable
-- Image pull secrets support
-- TLS/SSL support via ingress
-- Network policies can be added as needed
+- Use TLS with Ingress for secure connections
+- Configure authentication and authorization on the backend (future enhancement)
+- Sanitize and validate all incoming requests
+- Use network policies to restrict pod communication as needed
 
 ---
 
 ## 🤝 Contributing
 
+Contributions, issues, and feature requests are welcome!
+
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test with Helm: `helm template test ./helm-chart`
-5. Submit a pull request
+2. Create your feature branch (`git checkout -b feature/your-feature`)
+3. Commit your changes (`git commit -m 'Add some feature'`)
+4. Push to the branch (`git push origin feature/your-feature`)
+5. Open a Pull Request
+
+Please adhere to the coding style and write clear commit messages.
 
 ---
 
 ## ⚖️ Legal Notice
 
-mongoDhārā is an independent, third-party application designed to provide an intuitive interface for MongoDB databases.
-
-**Trademark Notice**: MongoDB® is a registered trademark of MongoDB, Inc. This project is not affiliated with, endorsed by, or sponsored by MongoDB, Inc. All MongoDB-related trademarks and logos are the property of their respective owners.
-
-**Disclaimer**: This software is provided "as is" without warranty of any kind. Use at your own risk.
+This project is **not affiliated with, endorsed by, or sponsored by MongoDB, Inc.**  
+**MongoDB®** is a registered trademark of **MongoDB, Inc.**  
+All product names, logos, and brands are property of their respective owners. Use of these names, trademarks, and brands does not imply endorsement.
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
+
+---
+
+Made with ❤️ by the mongoDhārā Team
+
+---

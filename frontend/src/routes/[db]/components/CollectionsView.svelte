@@ -36,6 +36,39 @@
   export let totalPages = Math.ceil(collectionsResponse.total / pageSize);
   $: totalPages = Math.ceil(collectionsResponse.total / pageSize);
 
+  // Track which collection names are overflowing
+  let overflowingCols = new Set<string>();
+
+  // Svelte action to check text overflow
+  function checkTextOverflow(element: HTMLElement, colName: string) {
+    function updateOverflow() {
+      // Small delay to ensure CSS is applied
+      setTimeout(() => {
+        const isOverflowing = element.scrollWidth > element.clientWidth;
+
+        if (isOverflowing) {
+          overflowingCols.add(colName);
+        } else {
+          overflowingCols.delete(colName);
+        }
+        overflowingCols = new Set(overflowingCols); // Trigger reactivity
+      }, 10);
+    }
+
+    // Check initially
+    updateOverflow();
+
+    // Check on window resize
+    const resizeHandler = () => updateOverflow();
+    window.addEventListener("resize", resizeHandler);
+
+    return {
+      destroy() {
+        window.removeEventListener("resize", resizeHandler);
+      },
+    };
+  }
+
   /**
    * Navigates to the collection detail page.
    * @param collectionName The name of the collection to navigate to.
@@ -64,8 +97,7 @@
       );
       collectionsResponse = response;
     } catch (e) {
-      addNotification("Failed to fetch collections.", "error");
-      console.error(e);
+      addNotification(e.message, "error");
     } finally {
       loading = false;
     }
@@ -99,8 +131,7 @@
       );
       await fetchCollections();
     } catch (e) {
-      addNotification(`Failed to delete collection: ${colToDelete}.`, "error");
-      console.error(e);
+      addNotification(e.message, "error");
     } finally {
       showDeleteModal = false;
       colToDelete = null;
@@ -132,11 +163,7 @@
       currentPage = 1;
       await fetchCollections();
     } catch (e) {
-      addNotification(
-        `Failed to create collection: ${newCollectionName}.`,
-        "error"
-      );
-      console.error(e);
+      addNotification(e.message, "error");
     }
   }
 
@@ -173,8 +200,7 @@
         );
       }
     } catch (e) {
-      addNotification(`Failed to export collection: ${colName}.`, "error");
-      console.error(e);
+      addNotification(e.message, "error");
     } finally {
       exportingCol = null;
     }
@@ -212,9 +238,15 @@
         </div>
       {:else}
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 p-1">
-          {#each collectionsResponse.collections as col (col)}
+          {#each collectionsResponse.collections as col, index (col)}
+            {@const rowNumber = Math.floor(index / 2) + 1}
+            {@const isLastRow = rowNumber === 8}
+            {@const hasTooltip = overflowingCols.has(col)}
             <div
-              class="card group shadow-lg cursor-pointer hover:bg-accent/20 hover:shadow-xl transition-all duration-200 ease-in-out h-14"
+              class="card group shadow-lg cursor-pointer hover:bg-accent/20 hover:shadow-xl transition-all duration-200 ease-in-out h-14 {hasTooltip
+                ? `tooltip ${isLastRow ? 'tooltip-top' : 'tooltip-bottom'}`
+                : ''}"
+              data-tip={hasTooltip ? col : null}
               role="button"
               tabindex="0"
               on:click={() => handleCollectionClick(col)}
@@ -224,12 +256,18 @@
                   handleCollectionClick(col);
                 }
               }}
+              style="position: relative;"
             >
               <div class="card-body p-3 flex-row justify-between items-center">
-                <span class="card-title text-l poppins font-normal">
-                  {col}
-                </span>
-                <div class="flex items-center space-x-2">
+                <div class="flex-1 mr-3 overflow-hidden" style="min-width: 0;">
+                  <span
+                    use:checkTextOverflow={col}
+                    class="card-title text-l poppins font-normal block overflow-hidden text-ellipsis whitespace-nowrap"
+                  >
+                    {col}
+                  </span>
+                </div>
+                <div class="flex items-center space-x-2 flex-shrink-0">
                   <button
                     on:click|stopPropagation={() => handleExport(col)}
                     class="tooltip tooltip-left hover:text-secondary px-2 rounded-full cursor-pointer"
@@ -295,7 +333,7 @@
         id="newCollectionName"
         bind:value={newCollectionName}
         placeholder="Enter collection name"
-        class="input input-bordered w-full"
+        class="input input-bordered w-full input-secondary"
       />
     </div>
   </Modal>
@@ -304,5 +342,19 @@
 <style>
   .poppins {
     font-family: "Poppins", sans-serif;
+  }
+
+  /* Custom tooltip styles for long collection names */
+  .tooltip:before {
+    max-width: 300px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    text-align: left;
+    line-height: 1.4;
+  }
+
+  /* Ensure tooltip content wraps properly */
+  .tooltip[data-tip]:before {
+    content: attr(data-tip);
   }
 </style>

@@ -1,0 +1,54 @@
+{{/* Backend API Ingress */}}
+{{- if .Values.ingress.backend.enabled -}}
+{{- $releaseName := .Release.Name -}}
+{{- $svcPortBackend := .Values.backend.service.port -}}
+{{- $sharedAnnotations := .Values.ingress.shared.annotations -}}
+{{- $backendAnnotations := .Values.ingress.backend.annotations -}}
+{{- $mergedAnnotations := merge $backendAnnotations $sharedAnnotations -}}
+{{- if and .Values.ingress.shared.className (not (hasKey $mergedAnnotations "kubernetes.io/ingress.class")) }}
+  {{- $_ := set $mergedAnnotations "kubernetes.io/ingress.class" .Values.ingress.shared.className}}
+{{- end }}
+{{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion -}}
+apiVersion: networking.k8s.io/v1
+{{- else if semverCompare ">=1.14-0" .Capabilities.KubeVersion.GitVersion -}}
+apiVersion: networking.k8s.io/v1beta1
+{{- else -}}
+apiVersion: extensions/v1beta1
+{{- end }}
+kind: Ingress
+metadata:
+  name: {{ include "mongodhara.fullname" . }}-backend
+  labels:
+    {{- include "mongodhara.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+  annotations:
+    {{- toYaml $mergedAnnotations | nindent 4 }}
+spec:
+  {{- if and .Values.ingress.shared.className (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion) }}
+  ingressClassName: {{ .Values.ingress.shared.className }}
+  {{- end }}
+  {{- if and .Values.ingress.shared.tls.enabled .Values.ingress.shared.tls.secretName }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.shared.host | quote }}
+      secretName: {{ .Values.ingress.shared.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.shared.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.backend.path }}
+            {{- if and .Values.ingress.backend.pathType (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion) }}
+            pathType: {{ .Values.ingress.backend.pathType }}
+            {{- end }}
+            backend:
+              {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
+              service:
+                name: {{ $releaseName }}-mongodhara-services
+                port:
+                  number: {{ $svcPortBackend }}
+              {{- else }}
+              serviceName: {{ $releaseName }}-mongodhara-services
+              servicePort: {{ $svcPortBackend }}
+              {{- end }}
+{{- end }}

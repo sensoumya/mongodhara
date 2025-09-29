@@ -38,29 +38,52 @@ spec:
             - name: http
               containerPort: {{ .Values.backend.service.targetPort }}
               protocol: TCP
-          {{- if .Values.backend.env }}
           env:
+            {{- if .Values.backend.mongoUri.secretRef.enabled }}
+            # MONGO_URI from secret
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.backend.mongoUri.secretRef.secretName }}
+                  key: {{ .Values.backend.mongoUri.secretRef.key }}
+            {{- else if .Values.backend.mongoUri.value }}
+            # MONGO_URI from direct value
+            - name: MONGO_URI
+              value: {{ .Values.backend.mongoUri.value | quote }}
+            {{- end }}
+            {{- if .Values.backend.env }}
+            # Additional environment variables
             {{- range .Values.backend.env }}
+            {{- if ne .name "MONGO_URI" }}
             - name: {{ .name }}
               value: {{ .value | quote }}
             {{- end }}
-          {{- end }}
+            {{- end }}
+            {{- end }}
           {{- with .Values.backend.envFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- if .Values.backend.probes.liveness.enabled }}
           livenessProbe:
             httpGet:
-              path: /
+              path: {{ .Values.backend.probes.liveness.path }}
               port: http
-            initialDelaySeconds: 30
-            periodSeconds: 10
+            initialDelaySeconds: {{ .Values.backend.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.backend.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.backend.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.backend.probes.liveness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.backend.probes.readiness.enabled }}
           readinessProbe:
             httpGet:
-              path: /
+              path: {{ .Values.backend.probes.readiness.path }}
               port: http
-            initialDelaySeconds: 5
-            periodSeconds: 5
+            initialDelaySeconds: {{ .Values.backend.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.backend.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.backend.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.backend.probes.readiness.failureThreshold }}
+          {{- end }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
       {{- with .Values.backend.nodeSelector }}
