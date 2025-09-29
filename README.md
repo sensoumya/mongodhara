@@ -49,9 +49,6 @@ Manage databases, collections, documents, and GridFS visually with zero overhead
 - [📄 License](#-license)
 
 ---
-![CodeQL](https://github.com/sensoumya/mongodhara/actions/workflows/codeql.yml/badge.svg)
-
----
 
 ## 💡 Why mongoDhārā?
 
