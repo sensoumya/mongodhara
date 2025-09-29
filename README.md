@@ -17,7 +17,6 @@
   </span>
 </h1>
 
-[![CodeQL](https://github.com/sensoumya/mongodhara/actions/workflows/codeql.yml/badge.svg)](https://github.com/sensoumya/mongodhara/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![Node.js](https://img.shields.io/badge/node.js-16+-green.svg)](https://nodejs.org/)
