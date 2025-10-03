@@ -3,6 +3,7 @@
   import { resolve } from "$app/paths";
   import Breadcrumb from "$lib/components/Breadcrumb.svelte";
   import Modal from "$lib/components/Modal.svelte";
+  import SearchAndPagination from "$lib/components/SearchAndPagination.svelte";
   import * as api from "$lib/stores/api";
   import { addNotification } from "$lib/stores/notifications";
   import type { PaginatedDatabases } from "$lib/stores/types";
@@ -16,6 +17,7 @@
     page_size: 16,
   };
   let loading = true;
+  let error = false;
   let showDeleteModal = false;
   let dbToDelete: string | null = null;
   let showCreateModal = false;
@@ -78,6 +80,7 @@
    */
   async function fetchDatabases() {
     loading = true;
+    error = false;
     try {
       const query = new URLSearchParams();
       if (searchTerm.trim() !== "") {
@@ -91,6 +94,13 @@
       );
       databasesResponse = response;
     } catch (e) {
+      error = true;
+      databasesResponse = {
+        databases: [],
+        total: 0,
+        page: 1,
+        page_size: pageSize,
+      };
       addNotification(e.message, "error");
     } finally {
       loading = false;
@@ -315,9 +325,9 @@
             class="loading loading-ring text-primary"
             style="width: 80px; height: 80px;"
           ></span>
-          <p class="mt-8 text-2xl font-bold font-poppins text-secondary">
+          <!-- <p class="mt-8 text-2xl font-bold font-poppins text-secondary">
             Loading databases...
-          </p>
+          </p> -->
         </div>
       {:else}
         <div
@@ -325,11 +335,19 @@
           in:fade={{ duration: 400 }}
           out:fade={{ duration: 400 }}
         >
-          {#if databasesResponse.databases.length === 0}
+          {#if error}
             <div
-              class="text-center text-secondary h-full flex flex-col justify-center items-center"
+              class="text-center text-secondary/40 h-full flex flex-col justify-center items-center"
             >
-              <p class="text-xl font-semibold poppins">No databases found</p>
+              <p class="text-2xl font-semibold poppins">
+                Unable to load content
+              </p>
+            </div>
+          {:else if databasesResponse.databases.length === 0}
+            <div
+              class="text-center text-secondary/40 h-full flex flex-col justify-center items-center"
+            >
+              <p class="text-2xl font-semibold poppins">No content available</p>
             </div>
           {:else}
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 p-1">
@@ -338,7 +356,7 @@
                 {@const isLastRow = rowNumber === 8}
                 {@const hasTooltip = overflowingDbs.has(db)}
                 <div
-                  class="card group shadow-lg cursor-pointer hover:bg-accent/20 hover:shadow-xl transition-all duration-200 ease-in-out h-14 {hasTooltip
+                  class="card group shadow-lg cursor-pointer hover:bg-neutral/20 hover:shadow-xl transition-all duration-200 ease-in-out h-14 {hasTooltip
                     ? `tooltip ${isLastRow ? 'tooltip-top' : 'tooltip-bottom'}`
                     : ''}"
                   data-tip={hasTooltip ? db : null}
@@ -378,65 +396,22 @@
     </div>
 
     <!-- Pagination Controls -->
-    <div
-      class="flex flex-col md:flex-row justify-between items-center space-y-2 md:space-y-0"
+    <SearchAndPagination
+      {currentPage}
+      {totalPages}
+      {loading}
+      showSearch={false}
+      showCreateButton={false}
+      on:pageChange={handlePageChange}
     >
-      <div class="text-sm text-secondary">
+      <div slot="pagination-info" class="text-sm text-accent">
         Displaying {databasesResponse.databases.length ===
         databasesResponse.total
           ? "all"
           : `${(currentPage - 1) * pageSize + 1} - ${Math.min(currentPage * pageSize, databasesResponse.total)}`}
         of {databasesResponse.total} databases
       </div>
-      <div class="join">
-        <button
-          on:click={() => handlePageChange({ detail: { page: 1 } })}
-          disabled={currentPage === 1 || loading}
-          class="join-item btn hover:text-accent/80"
-          aria-label="First page"
-        >
-          «
-        </button>
-        <button
-          on:click={() =>
-            handlePageChange({ detail: { page: currentPage - 1 } })}
-          disabled={currentPage === 1 || loading}
-          class="join-item btn hover:text-accent/80"
-          aria-label="Previous page"
-        >
-          ‹
-        </button>
-        <div class="join-item flex items-center space-x-1 px-4">
-          <span class="text-base-content">Page</span>
-          <input
-            type="number"
-            bind:value={currentPage}
-            on:change={() => fetchDatabases()}
-            min="1"
-            max={totalPages}
-            class="input input-sm w-16 text-center input-neutral"
-          />
-          <span class="text-base-content">of {totalPages}</span>
-        </div>
-        <button
-          on:click={() =>
-            handlePageChange({ detail: { page: currentPage + 1 } })}
-          disabled={currentPage >= totalPages || loading}
-          class="join-item btn hover:text-accent/80"
-          aria-label="Next page"
-        >
-          ›
-        </button>
-        <button
-          on:click={() => handlePageChange({ detail: { page: totalPages } })}
-          disabled={currentPage >= totalPages || loading}
-          class="join-item btn hover:text-accent/80"
-          aria-label="Last page"
-        >
-          »
-        </button>
-      </div>
-    </div>
+    </SearchAndPagination>
   </div>
 </div>
 

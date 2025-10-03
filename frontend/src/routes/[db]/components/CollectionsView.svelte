@@ -11,6 +11,7 @@
   export let searchTerm: string = "";
   export let currentPage: number = 1;
   export let loading: boolean = false;
+  let error: boolean = false;
 
   const pageSize: number = 16;
 
@@ -82,6 +83,7 @@
    */
   export async function fetchCollections() {
     loading = true;
+    error = false;
     try {
       const query = new URLSearchParams();
 
@@ -97,6 +99,13 @@
       );
       collectionsResponse = response;
     } catch (e) {
+      error = true;
+      collectionsResponse = {
+        collections: [],
+        total: 0,
+        page: 1,
+        page_size: pageSize,
+      };
       addNotification(e.message, "error");
     } finally {
       loading = false;
@@ -220,9 +229,6 @@
         class="loading loading-ring text-primary"
         style="width: 80px; height: 80px;"
       ></span>
-      <p class="mt-8 text-2xl font-bold font-poppins text-secondary">
-        Loading collections...
-      </p>
     </div>
   {:else}
     <div
@@ -230,30 +236,38 @@
       in:fade={{ duration: 400 }}
       out:fade={{ duration: 400 }}
     >
-      {#if collectionsResponse.collections.length === 0}
+      {#if error}
         <div
-          class="text-center text-secondary h-full flex flex-col justify-center items-center"
+          class="text-center text-secondary/40 h-full flex flex-col justify-center items-center"
         >
-          <p class="text-xl font-semibold poppins">No collections found</p>
+          <p class="text-2xl font-semibold poppins">Unable to load content</p>
+        </div>
+      {:else if collectionsResponse.collections.length === 0}
+        <div
+          class="text-center text-secondary/40 h-full flex flex-col justify-center items-center"
+        >
+          <p class="text-2xl font-semibold poppins">No content available</p>
         </div>
       {:else}
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 p-1">
-          {#each collectionsResponse.collections as col, index (col)}
+          {#each collectionsResponse.collections as collection, index (collection.collection_name)}
             {@const rowNumber = Math.floor(index / 2) + 1}
             {@const isLastRow = rowNumber === 8}
-            {@const hasTooltip = overflowingCols.has(col)}
+            {@const hasTooltip = overflowingCols.has(
+              collection.collection_name
+            )}
             <div
-              class="card group shadow-lg cursor-pointer hover:bg-accent/20 hover:shadow-xl transition-all duration-200 ease-in-out h-14 {hasTooltip
+              class="card group shadow-lg cursor-pointer hover:bg-neutral/20 hover:shadow-xl transition-all duration-200 ease-in-out h-14 {hasTooltip
                 ? `tooltip ${isLastRow ? 'tooltip-top' : 'tooltip-bottom'}`
                 : ''}"
-              data-tip={hasTooltip ? col : null}
+              data-tip={hasTooltip ? collection.collection_name : null}
               role="button"
               tabindex="0"
-              on:click={() => handleCollectionClick(col)}
+              on:click={() => handleCollectionClick(collection.collection_name)}
               on:keydown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  handleCollectionClick(col);
+                  handleCollectionClick(collection.collection_name);
                 }
               }}
               style="position: relative;"
@@ -261,21 +275,27 @@
               <div class="card-body p-3 flex-row justify-between items-center">
                 <div class="flex-1 mr-3 overflow-hidden" style="min-width: 0;">
                   <span
-                    use:checkTextOverflow={col}
+                    use:checkTextOverflow={collection.collection_name}
                     class="card-title text-l poppins font-normal block overflow-hidden text-ellipsis whitespace-nowrap"
                   >
-                    {col}
+                    {collection.collection_name}
                   </span>
                 </div>
                 <div class="flex items-center space-x-2 flex-shrink-0">
+                  <div
+                    class="w-6 h-6 rounded-full bg-accent text-accent-content text-xs font-medium flex items-center justify-center"
+                  >
+                    {collection.documents_count}
+                  </div>
                   <button
-                    on:click|stopPropagation={() => handleExport(col)}
+                    on:click|stopPropagation={() =>
+                      handleExport(collection.collection_name)}
                     class="tooltip tooltip-left hover:text-secondary px-2 rounded-full cursor-pointer"
                     data-tip={`Export as JSON`}
-                    aria-label={`Export collection ${col}`}
-                    disabled={exportingCol === col}
+                    aria-label={`Export collection ${collection.collection_name}`}
+                    disabled={exportingCol === collection.collection_name}
                   >
-                    {#if exportingCol === col}
+                    {#if exportingCol === collection.collection_name}
                       <span class="loading loading-spinner loading-sm"></span>
                     {:else}
                       <i
@@ -284,10 +304,11 @@
                     {/if}
                   </button>
                   <button
-                    on:click|stopPropagation={() => handleDeleteClick(col)}
+                    on:click|stopPropagation={() =>
+                      handleDeleteClick(collection.collection_name)}
                     class="tooltip tooltip-left hover:text-error px-2 rounded-full cursor-pointer"
                     data-tip={`Delete`}
-                    aria-label={`Delete collection ${col}`}
+                    aria-label={`Delete collection ${collection.collection_name}`}
                   >
                     <i class="fas fa-trash-alt text-lg"></i>
                   </button>

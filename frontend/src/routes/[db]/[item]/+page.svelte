@@ -30,6 +30,7 @@
     page_size: 16, // Consistent page size
   };
   let loading = true;
+  let error = false;
   let isTableLoading = false; // New state variable for table loading
 
   // State for document deletion modal
@@ -219,6 +220,7 @@
 
     if (isInitialLoad) {
       loading = true;
+      error = false;
     } else {
       isTableLoading = true;
     }
@@ -230,6 +232,7 @@
         await fetchGridFSFiles();
       }
     } catch (e) {
+      error = true;
       addNotification(
         `Failed to fetch ${isCollection ? "documents" : "files"}.`,
         "error"
@@ -298,6 +301,7 @@
       }
     } catch (e) {
       // Handle API errors (network issues, server errors, auth errors, etc.)
+      error = true;
       documentsResponse = {
         docs: [],
         total: 0,
@@ -340,6 +344,7 @@
         };
       }
     } catch (e) {
+      error = true;
       addNotification(e.message, "error");
       documentsResponse = {
         docs: [],
@@ -1076,17 +1081,18 @@
             class="loading loading-ring text-primary"
             style="width: 80px; height: 80px;"
           ></span>
-          <p class="mt-8 text-2xl font-bold font-poppins text-secondary">
-            Loading {isGridFS ? "files" : "documents"}...
-          </p>
+        </div>
+      {:else if error}
+        <div
+          class="text-center text-secondary/40 h-full flex flex-col justify-center"
+        >
+          <p class="text-2xl font-semibold poppins">Unable to load content</p>
         </div>
       {:else if documentsResponse.docs.length === 0}
         <div
-          class="text-center text-secondary h-full flex flex-col justify-center"
+          class="text-center text-secondary/40 h-full flex flex-col justify-center"
         >
-          <p class="text-xl font-semibold poppins">
-            No {isGridFS ? "files" : "documents"} found.
-          </p>
+          <p class="text-2xl font-semibold poppins">No content available</p>
         </div>
       {:else}
         <div class="flex relative">
@@ -1126,8 +1132,8 @@
                     on:mouseleave={() => (hoveredRowId = null)}
                     class="cursor-pointer transition-colors duration-150 {hoveredRowId ===
                     doc._id
-                      ? 'bg-accent/20'
-                      : 'hover:bg-accent/20'}"
+                      ? 'bg-neutral/20'
+                      : 'hover:bg-neutral/20'}"
                   >
                     {#each allKeys as key}
                       <td
@@ -1172,8 +1178,8 @@
                     on:mouseleave={() => (hoveredRowId = null)}
                     class="transition-colors duration-150 {hoveredRowId ===
                     doc._id
-                      ? 'bg-accent/20'
-                      : 'hover:bg-accent/20'}"
+                      ? 'bg-neutral/20'
+                      : 'hover:bg-neutral/20'}"
                   >
                     <td class="text-center no-padding-table-cell">
                       <div
@@ -1267,7 +1273,7 @@
       <div
         class="flex flex-col md:flex-row justify-between items-center space-y-2 md:space-y-0"
       >
-        <div class="text-sm text-secondary">
+        <div class="text-sm text-accent">
           Displaying {documentsResponse.docs.length === documentsResponse.total
             ? "all"
             : `${(currentPage - 1) * pageSize + 1} - ${Math.min(currentPage * pageSize, documentsResponse.total)}`}
@@ -1338,13 +1344,6 @@
         disabled={isUploading}
       ></textarea>
     </div>
-
-    {#if isUploading}
-      <div class="flex items-center gap-2 text-sm text-base-content/70 mb-4">
-        <span class="loading loading-spinner loading-sm"></span>
-        <span>Uploading file...</span>
-      </div>
-    {/if}
   </Modal>
 {/if}
 

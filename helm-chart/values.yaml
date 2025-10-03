@@ -42,6 +42,8 @@ backend:
   env:
     - name: MONGO_URI
       value: "mongodb://localhost:27017"
+    - name: BASE_PATH
+      value: "/mdhara/api"
   
   # MongoDB URI configuration - supports direct value or secret reference
   mongoUri:
@@ -209,13 +211,11 @@ ingress:
   # Backend API ingress specific settings  
   backend:
     enabled: true
-    path: /mdhara/api(/|$)(.*)
-    pathType: ImplementationSpecific
+    path: /mdhara/api
+    pathType: Prefix
     
     # Backend-specific annotations (merged with shared)
-    annotations:
-      nginx.ingress.kubernetes.io/rewrite-target: /$2
-      
+    annotations:      
       # API-specific rate limiting
       nginx.ingress.kubernetes.io/rate-limit-rps: "100"
       nginx.ingress.kubernetes.io/rate-limit-rpm: "6000"

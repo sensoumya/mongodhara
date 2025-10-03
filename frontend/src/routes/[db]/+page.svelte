@@ -3,6 +3,7 @@
   import { base } from "$app/paths";
   import { page } from "$app/stores";
   import Breadcrumb from "$lib/components/Breadcrumb.svelte";
+  import SearchAndPagination from "$lib/components/SearchAndPagination.svelte";
   import { onMount } from "svelte";
   import { fade } from "svelte/transition";
   import CollectionsView from "./components/CollectionsView.svelte";
@@ -263,10 +264,15 @@
     </div>
 
     <!-- Pagination Controls -->
-    <div
-      class="flex flex-col md:flex-row justify-between items-center space-y-2 md:space-y-0"
+    <SearchAndPagination
+      {currentPage}
+      {totalPages}
+      {loading}
+      showSearch={false}
+      showCreateButton={false}
+      on:pageChange={handlePageChange}
     >
-      <div class="text-sm text-secondary">
+      <div slot="pagination-info" class="text-sm text-accent">
         {#if carouselIndex === 0}
           Displaying {collectionsResponse.collections?.length ===
           collectionsResponse.total
@@ -280,53 +286,7 @@
           of {gridfsResponse.total || 0} GridFS buckets
         {/if}
       </div>
-      <div class="join">
-        <button
-          on:click={() => changePage(1)}
-          disabled={currentPage === 1 || loading}
-          class="join-item btn hover:text-accent/80"
-          aria-label="First page"
-        >
-          «
-        </button>
-        <button
-          on:click={() => changePage(currentPage - 1)}
-          disabled={currentPage === 1 || loading}
-          class="join-item btn hover:text-accent/80"
-          aria-label="Previous page"
-        >
-          ‹
-        </button>
-        <div class="join-item flex items-center space-x-1 px-4">
-          <span class="text-base-content">Page</span>
-          <input
-            type="number"
-            bind:value={currentPage}
-            on:change={() => fetchData()}
-            min="1"
-            max={totalPages}
-            class="input input-sm w-16 text-center input-neutral"
-          />
-          <span class="text-base-content">of {totalPages}</span>
-        </div>
-        <button
-          on:click={() => changePage(currentPage + 1)}
-          disabled={currentPage >= totalPages || loading}
-          class="join-item btn hover:text-accent/80"
-          aria-label="Next page"
-        >
-          ›
-        </button>
-        <button
-          on:click={() => changePage(totalPages)}
-          disabled={currentPage >= totalPages || loading}
-          class="join-item btn hover:text-accent/80"
-          aria-label="Last page"
-        >
-          »
-        </button>
-      </div>
-    </div>
+    </SearchAndPagination>
   </div>
 </div>
 

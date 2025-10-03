@@ -2,9 +2,15 @@
 <html lang="en">
   <head>
 	<title>mongoDhārā</title>
+	<script>
+		// Update title with hostname after page loads
+		if (typeof window !== 'undefined') {
+			document.title = window.location.hostname || window.location.host;
+		}
+	</script>
 
     <meta charset="utf-8" />
-	<!-- <link rel="icon" type="image/png" href="/mdhara/leaf.png" sizes="96x96" /> -->
+	<link rel="icon" type="image/png" href="/mdhara/favicon-96x96.png" sizes="96x96" />
 	<link rel="icon" type="image/svg+xml" href="/mdhara/favicon.svg" />
 	<link rel="shortcut icon" href="/mdhara/favicon.ico" />
 	<link rel="apple-touch-icon" sizes="180x180" href="/mdhara/apple-touch-icon.png" />
@@ -18,11 +24,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro&display=swap" rel="stylesheet">
 
-    <!-- Particles.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/particlesjs/2.2.3/particles.min.js" integrity="sha512-jq8sZI0I9Og0nnZ+CfJRnUzNSDKxr/5Bvha5bn7AHzTnRyxUfpUArMzfH++mwE/hb2efOo1gCAgI+1RMzf8F7g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.0/css/all.min.css" integrity="sha512-DxV+EoADOkOygM4IR9yXP8Sb2qwgidEmeqAEmDKIOfPRQZOWbXCzLC6vjbZyy0vPisbH2SyW27+ddLVCN+OMzQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <!-- Font Awesome (local) -->
+    <link rel="stylesheet" href="/mdhara/fontawesome.css" />
 
     <!-- Responsive -->
     <meta name="viewport" content="width=device-width, initial-scale=1" />

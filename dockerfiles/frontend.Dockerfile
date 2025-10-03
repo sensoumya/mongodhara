@@ -20,7 +20,7 @@ WORKDIR /app
 
 # Copy package files for production dependencies (fixed with trailing /)
 COPY frontend/package*.json ./
-RUN npm install --production
+RUN npm install --omit=dev
 
 # Copy the built application from the builder stage
 COPY --from=builder /app/build /app/build

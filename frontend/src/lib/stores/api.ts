@@ -115,6 +115,11 @@ export async function apiUploadFile<T>(path: string, formData: FormData): Promis
     throw new Error(`Auth error: ${res.status}`);
   }
   
+  // Handle 413 (Request Entity Too Large) - response will be HTML from ingress
+  if (res.status === 413) {
+    throw new Error(`File too large. The uploaded file exceeds the maximum allowed size.`);
+  }
+  
   // Parse JSON once for both success and error cases
   const data = await res.json();
   

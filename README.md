@@ -1,21 +1,6 @@
-<h1 style="font-size:3.2em; font-weight:800; margin-top: 0.5em; margin-bottom: 0.5em;">
-  <span style="
-    font-size:0.85em;
-    opacity:0.8;
-    color:black;
-    background:transparent;
-    text-shadow:
-      -1px -1px 0 white,
-       1px -1px 0 white,
-      -1px  1px 0 white,
-       1px  1px 0 white;
-  ">
-    mongo
-  </span>
-  <span style="color:white; background:black; padding:6px 14px; border-radius:6px;">
-    Dhārā<span style="display:inline-block; transform: skewX(-10deg);">!</span>
-  </span>
-</h1>
+![Mongo Dhārā Logo](./frontend/static/logo.png)
+
+---
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)

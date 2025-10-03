@@ -6,8 +6,10 @@
     indentWithTab,
   } from "@codemirror/commands";
   import { json } from "@codemirror/lang-json";
+  import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
   import { lintGutter, linter } from "@codemirror/lint";
   import { EditorView, keymap } from "@codemirror/view";
+  import { tags } from "@lezer/highlight";
   import { basicSetup } from "codemirror";
   import jsonlint from "jsonlint-mod";
   import { createEventDispatcher, onDestroy, onMount } from "svelte";
@@ -26,6 +28,7 @@
   let showAlert = false;
   let alertMessage = "";
   let jsonString: string;
+  let copySuccess = false;
 
   // Custom theme to enforce full height
   const fullHeightTheme = EditorView.theme({
@@ -46,24 +49,30 @@
     },
     ".cm-gutters": {
       backgroundColor: "hsl(var(--b2))",
-      color: "hsl(var(--bc) / 0.7)",
+      // color: "hsl(var(--bc) / 0.7)",
       borderRight: "1px solid hsl(var(--b3))",
     },
-    // Styles for the active line
+    ".cm-selectionBackground": {
+      backgroundColor: "rgba(107, 114, 128, 0.2) !important",
+    },
+    "&.cm-focused .cm-selectionBackground": {
+      backgroundColor: "rgba(107, 114, 128, 0.2) !important",
+    },
+    "::selection": {
+      backgroundColor: "rgba(107, 114, 128, 0.2) !important",
+    },
     ".cm-activeLine": {
-      backgroundColor: "hsl(var(--b3) / 0.6)",
+      backgroundColor: "hsl(var(--b3))",
     },
     ".cm-activeLineGutter": {
-      backgroundColor: "hsl(var(--b3) / 0.6)",
+      backgroundColor: "hsl(var(--b3))",
     },
     ".cm-lint-marker": {
       borderColor: "transparent",
     },
-    // Cursor color
     ".cm-cursor": {
       borderLeftColor: "hsl(var(--bc))",
     },
-    // Search highlight colors
     ".cm-searchMatch": {
       backgroundColor: "hsl(var(--wa) / 0.3)",
       outline: "1px solid hsl(var(--wa) / 0.5)",
@@ -72,6 +81,16 @@
       backgroundColor: "hsl(var(--wa) / 0.5)",
     },
   });
+
+  // JSON Syntax Highlighting Theme - balanced colors for both light and dark themes
+  const jsonHighlightStyle = HighlightStyle.define([
+    { tag: tags.propertyName, class: "text-base-content/70 font-medium" },
+    { tag: tags.string, class: "text-primary" },
+    { tag: tags.number, class: "text-secondary" },
+    { tag: tags.bool, class: "text-accent font-bold" },
+    { tag: tags.null, class: "text-warning font-bold" },
+    { tag: tags.keyword, class: "text-info font-bold" },
+  ]);
 
   // Sync external doc -> editor
   $: if (editorView && document && isOpen) {
@@ -95,34 +114,82 @@
   });
 
   onDestroy(() => editorView?.destroy());
-
   function initializeEditor() {
     if (!editorContainer) return;
 
     const extensions = [
       basicSetup,
       json(),
+      syntaxHighlighting(jsonHighlightStyle),
       lintGutter(),
       linter((view) => {
         try {
           jsonlint.parse(view.state.doc.toString());
           return [];
         } catch (e: any) {
-          return [
-            {
-              from: 0,
-              to: view.state.doc.length,
-              severity: "error",
-              message: e.message,
-            },
-          ];
+          // Extract line and column from error message if available
+          let line = 1;
+          let column = 1;
+
+          // Try to parse line number from error message
+          const lineMatch = e.message.match(/line (\d+)/i);
+          if (lineMatch) {
+            line = parseInt(lineMatch[1], 10);
+          }
+
+          // Try to parse column number from error message
+          const columnMatch = e.message.match(/column (\d+)/i);
+          if (columnMatch) {
+            column = parseInt(columnMatch[1], 10);
+          }
+
+          // Calculate position in document
+          const doc = view.state.doc;
+          let pos = 0;
+
+          try {
+            // Find the actual position of the error
+            if (line > 1) {
+              for (let i = 1; i < line && pos < doc.length; i++) {
+                const lineEnd = doc.lineAt(pos).to;
+                pos = lineEnd + 1; // Move to start of next line
+              }
+            }
+
+            // Add column offset
+            pos += Math.max(0, column - 1);
+            pos = Math.min(pos, doc.length);
+
+            // Get the line at this position for error span
+            const errorLine = doc.lineAt(pos);
+
+            return [
+              {
+                from: errorLine.from,
+                to: errorLine.to,
+                severity: "error",
+                message: e.message,
+              },
+            ];
+          } catch (posError) {
+            // Fallback to first line if position calculation fails
+            const firstLine = doc.line(1);
+            return [
+              {
+                from: firstLine.from,
+                to: firstLine.to,
+                severity: "error",
+                message: e.message,
+              },
+            ];
+          }
         }
       }),
       EditorView.lineWrapping,
       history(),
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
       fullHeightTheme,
-      daisyUITheme, // Updated theme extension
+      daisyUITheme,
     ];
 
     // Add readOnly extension if readOnly prop is true
@@ -177,6 +244,21 @@
       });
     } catch {
       alertMessage = "Invalid JSON format!";
+      showAlert = true;
+    }
+  }
+
+  async function copyToClipboard() {
+    try {
+      const content = editorView!.state.doc.toString();
+      await navigator.clipboard.writeText(content);
+      // Show tick mark for 2 seconds
+      copySuccess = true;
+      setTimeout(() => {
+        copySuccess = false;
+      }, 2000);
+    } catch {
+      alertMessage = "Failed to copy to clipboard!";
       showAlert = true;
     }
   }
@@ -237,12 +319,18 @@
       <div class="flex justify-between space-x-3 pt-3 pb-4 px-0 mt-4">
         <div class="flex space-x-3">
           <div class="tooltip" data-tip="Close">
-            <button on:click={close} class="btn btn-ghost btn-circle">
+            <button
+              on:click={close}
+              class="btn btn-ghost btn-circle hover:text-accent hover:bg-base-200/80"
+            >
               <i class="fas fa-times text-lg"></i>
             </button>
           </div>
           <div class="tooltip" data-tip={isExpanded ? "Collapse" : "Expand"}>
-            <button on:click={toggleExpand} class="btn btn-ghost">
+            <button
+              on:click={toggleExpand}
+              class="btn btn-ghost hover:text-accent hover:bg-base-200/80"
+            >
               {#if isExpanded}
                 <i class="fas fa-compress text-lg"></i>
               {:else}
@@ -253,13 +341,28 @@
         </div>
 
         <div class="flex space-x-3">
+          <div class="tooltip tooltip-left" data-tip="Copy Content">
+            <button
+              on:click={copyToClipboard}
+              class="btn btn-ghost hover:text-secondary hover:bg-base-200/80"
+            >
+              {#if copySuccess}
+                <i class="fas fa-check text-lg text-success"></i>
+              {:else}
+                <i class="fas fa-copy text-lg"></i>
+              {/if}
+            </button>
+          </div>
+          <div class="tooltip tooltip-left" data-tip="Reformat JSON">
+            <button
+              on:click={prettify}
+              class="btn btn-ghost hover:text-secondary hover:bg-base-200/80"
+            >
+              <i class="fa-solid fa-wand-magic-sparkles text-lg"></i>
+            </button>
+          </div>
           {#if !readOnly}
-            <div class="tooltip" data-tip="Reformat JSON">
-              <button on:click={prettify} class="btn btn-ghost">
-                <i class="fa-solid fa-wand-magic-sparkles text-lg"></i>
-              </button>
-            </div>
-            <div class="tooltip" data-tip="Save Document">
+            <div class="tooltip tooltip-left" data-tip="Save Document">
               <button on:click={save} class="btn btn-primary">
                 <i class="fas fa-save text-lg"></i>
               </button>
@@ -310,49 +413,8 @@
     color: hsl(var(--er));
   }
 
-  /* Updated JSON highlighting with better DaisyUI integration */
-  :global(.cm-string) {
-    color: hsl(var(--su));
-    font-weight: 500;
-  }
-  :global(.cm-property) {
-    color: hsl(var(--p));
-    font-weight: 600;
-  }
-  :global(.cm-number) {
-    color: hsl(var(--in));
-    font-weight: 500;
-  }
-  :global(.cm-boolean),
-  :global(.cm-null) {
-    color: hsl(var(--se));
-    font-weight: 600;
-  }
-  :global(.cm-punctuation) {
-    color: hsl(var(--bc) / 0.9);
-  }
-
-  /* Brackets and braces styling */
-  :global(.cm-bracket) {
-    color: hsl(var(--bc) / 0.8);
-    font-weight: bold;
-  }
-
-  /* Comment styles (if any) */
-  :global(.cm-comment) {
-    color: hsl(var(--bc) / 0.6);
-    font-style: italic;
-  }
-
-  /* Line numbers styling */
-  :global(.cm-lineNumbers) {
-    color: hsl(var(--bc) / 0.5);
-  }
-
-  /* Fold markers */
-  :global(.cm-foldMarker) {
-    background-color: hsl(var(--b3));
-    color: hsl(var(--bc));
-    border: 1px solid hsl(var(--bc) / 0.3);
+  /* Make CodeMirror tooltip text always black for better visibility */
+  :global(.cm-tooltip) {
+    color: black !important;
   }
 </style>

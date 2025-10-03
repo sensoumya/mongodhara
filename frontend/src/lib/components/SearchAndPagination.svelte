@@ -182,7 +182,7 @@
         on:change={handlePageInput}
         min="1"
         max={totalPages}
-        class="input input-sm w-16 text-center"
+        class="input input-sm w-16 text-center input-accent"
       />
       <span class="text-base-content">of {totalPages}</span>
     </div>
