@@ -28,7 +28,7 @@
         </a>
       {:else}
         <div
-          class="px-3 py-1 bg-base-200 text-base-content rounded-md whitespace-nowrap"
+          class="px-3 py-1 bg-base-300 text-base-content rounded-md whitespace-nowrap"
         >
           {#if segment.isHome}
             <i class="fas fa-home mr-2 align-middle"></i>

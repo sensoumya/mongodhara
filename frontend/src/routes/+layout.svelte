@@ -56,6 +56,9 @@
               >!</span
             >
           </span>
+          <span class="text-sm text-base-content/60 ml-3 self-end relative">
+            v2.1.2
+          </span>
         </a>
 
         <button

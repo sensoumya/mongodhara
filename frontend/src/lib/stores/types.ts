@@ -21,8 +21,14 @@ export interface PaginatedDatabases {
   page_size: number;
 }
 
+export interface Collection {
+  collection_name: string;
+  documents_count: number;
+  total_size: number;
+}
+
 export interface PaginatedCollections {
-  collections: string[];
+  collections: Collection[];
   total: number;
   page: number;
   page_size: number;
