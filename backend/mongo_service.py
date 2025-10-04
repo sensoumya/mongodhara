@@ -3,12 +3,11 @@ from datetime import datetime
 import gridfs
 from bson import ObjectId
 from bson.errors import InvalidId
+from config import MONGO_URI
 from gridfs.errors import NoFile
+from logger import logger
 from pymongo import MongoClient
 from pymongo.errors import CollectionInvalid, OperationFailure
-
-from config import MONGO_URI
-from logger import logger
 
 
 class DatabaseExistsError(Exception):
@@ -36,7 +35,8 @@ class MongoService:
         dbs = self.client.list_database_names()
 
         if search:
-            dbs = [db for db in dbs if search.lower() in db.lower()]
+            search_lower = search.lower()
+            dbs = [db for db in dbs if search_lower in db.lower()]
 
         dbs.sort(reverse=(sort == "desc"))
         start = (page - 1) * page_size
@@ -86,69 +86,77 @@ class MongoService:
             logger.debug(
                 f"Listing collections in DB: {db_name} with filter and pagination"
             )
-            collection_names = self.client[db_name].list_collection_names()
+            
+            db = self.client[db_name]
+            collection_names = db.list_collection_names()
 
             # Filter out MongoDB system collections and GridFS collections
-            collection_names = [
-                c
-                for c in collection_names
-                if not c.startswith("system.")
-                and not c.endswith(".files")
-                and not c.endswith(".chunks")
+            filtered_names = [
+                c for c in collection_names
+                if not (c.startswith("system.") or c.endswith((".files", ".chunks")))
             ]
 
-            # Build detailed collection info similar to GridFS buckets
+            # Apply search filter early
+            if search:
+                search_lower = search.lower()
+                filtered_names = [
+                    c for c in filtered_names
+                    if search_lower in c.lower()
+                ]
+
+            # Sort collection names
+            filtered_names.sort(reverse=(sort == "desc"))
+
+            # Calculate pagination
+            total = len(filtered_names)
+            start = (page - 1) * page_size
+            end = start + page_size
+            
+            # Only fetch stats for paginated collections
+            paginated_names = filtered_names[start:end]
+
+            # Use aggregation to get stats efficiently (MongoDB does the work)
             collections = []
-            for collection_name in collection_names:
+            for collection_name in paginated_names:
                 try:
-                    # Get document count for this collection
-                    documents_count = self.client[db_name][
-                        collection_name
-                    ].count_documents({})
+                    # Use $collStats aggregation - single MongoDB operation
+                    pipeline = [
+                        {"$collStats": {"storageStats": {}}},
+                        {"$project": {
+                            "count": "$storageStats.count",
+                            "size": "$storageStats.size"
+                        }}
+                    ]
+                    
+                    stats_result = list(db[collection_name].aggregate(pipeline))
+                    
+                    if stats_result:
+                        stats = stats_result[0]
+                        documents_count = stats.get("count", 0)
+                        total_size = stats.get("size", 0)
+                    else:
+                        # Fallback only if aggregation returns nothing
+                        documents_count = db[collection_name].estimated_document_count()
+                        coll_stats = db.command("collStats", collection_name)
+                        total_size = coll_stats.get("size", 0)
 
-                    # Calculate collection size (estimated)
-                    stats = self.client[db_name].command("collStats", collection_name)
-                    total_size = stats.get("size", 0)
-
-                    collections.append(
-                        {
-                            "collection_name": collection_name,
-                            "documents_count": documents_count,
-                            "total_size": total_size,
-                        }
-                    )
+                    collections.append({
+                        "collection_name": collection_name,
+                        "documents_count": documents_count,
+                        "total_size": total_size,
+                    })
                 except Exception as e:
                     logger.warning(
                         f"Could not get stats for collection '{collection_name}': {e}"
                     )
-                    # Include collection with basic info if stats fail
-                    collections.append(
-                        {
-                            "collection_name": collection_name,
-                            "documents_count": 0,
-                            "total_size": 0,
-                        }
-                    )
-
-            # Apply search filter
-            if search:
-                collections = [
-                    c
-                    for c in collections
-                    if search.lower() in c["collection_name"].lower()
-                ]
-
-            # Sort collections by name
-            collections.sort(
-                key=lambda x: x["collection_name"], reverse=(sort == "desc")
-            )
-
-            total = len(collections)
-            start = (page - 1) * page_size
-            end = start + page_size
+                    collections.append({
+                        "collection_name": collection_name,
+                        "documents_count": 0,
+                        "total_size": 0,
+                    })
 
             return {
-                "collections": collections[start:end],
+                "collections": collections,
                 "total": total,
                 "page": page,
                 "page_size": page_size,
@@ -197,29 +205,45 @@ class MongoService:
             f"Querying {db_name}.{col_name} | filter={filter} | page={page} | size={page_size}"
         )
 
-        db = self.client[db_name]
-        collection = db[col_name]
+        collection = self.client[db_name][col_name]
         query_filter = filter or {}
 
-        # 👇 Convert _id from string to ObjectId if present
+        # Convert _id from string to ObjectId if present
         if "_id" in query_filter and isinstance(query_filter["_id"], str):
             try:
                 query_filter["_id"] = ObjectId(query_filter["_id"])
             except Exception:
                 raise ValueError("Invalid ObjectId format for _id")
 
-        total = collection.count_documents(query_filter)
-        cursor = collection.find(query_filter)
-
+        # Use aggregation pipeline for better performance
+        pipeline = [{"$match": query_filter}]
+        
         if sort_field:
-            cursor = cursor.sort(sort_field, sort_order)
+            pipeline.append({"$sort": {sort_field: sort_order}})
+        
+        # Use $facet to get count and data in single query
+        pipeline.append({
+            "$facet": {
+                "total": [{"$count": "count"}],
+                "data": [
+                    {"$skip": (page - 1) * page_size},
+                    {"$limit": page_size}
+                ]
+            }
+        })
 
-        cursor = cursor.skip((page - 1) * page_size).limit(page_size)
-
-        data = []
-        for doc in cursor:
-            doc["_id"] = str(doc["_id"])
-            data.append(doc)
+        result = list(collection.aggregate(pipeline))
+        
+        if result:
+            total = result[0]["total"][0]["count"] if result[0]["total"] else 0
+            data = result[0]["data"]
+            
+            # Convert ObjectId to string
+            for doc in data:
+                doc["_id"] = str(doc["_id"])
+        else:
+            total = 0
+            data = []
 
         return {"data": data, "total": total, "page": page, "page_size": page_size}
 
@@ -229,7 +253,10 @@ class MongoService:
         except InvalidId:
             raise ValueError("Invalid ObjectId")
 
-        doc = self.client[db_name][col_name].find_one({"_id": _id})
+        doc = self.client[db_name][col_name].find_one(
+            {"_id": _id},
+            session=None
+        )
         if doc:
             doc["_id"] = str(doc["_id"])
         return doc
@@ -241,7 +268,8 @@ class MongoService:
             raise ValueError("Invalid ObjectId")
 
         result = self.client[db_name][col_name].update_one(
-            {"_id": _id}, {"$set": update_data}
+            {"_id": _id}, 
+            {"$set": update_data}
         )
         return result.modified_count
 
@@ -258,26 +286,39 @@ class MongoService:
 
     def export_collection(self, db_name, col_name):
         logger.info(f"Exporting collection: {db_name}.{col_name}")
-        docs = self.client[db_name][col_name].find()
+        
+        # Use aggregation with projection to convert _id on MongoDB side
+        pipeline = [
+            {"$project": {
+                "_id": {"$toString": "$_id"},
+                "doc": "$$ROOT"
+            }},
+            {"$replaceRoot": {"newRoot": "$doc"}},
+            {"$project": {"doc": 0}}
+        ]
+        
+        # Stream results for memory efficiency
         exported = []
-        for doc in docs:
+        for doc in self.client[db_name][col_name].aggregate(pipeline, allowDiskUse=True):
             doc["_id"] = str(doc["_id"])
             exported.append(doc)
+        
         return exported
 
     def import_documents(self, db_name, col_name, documents: list):
         if len(documents) > 500:
             raise ValueError("Too many documents to import (max 500)")
 
-        # Always remove _id fields to avoid conflicts and let MongoDB generate new ones
-        cleaned_documents = []
-        for doc in documents:
-            cleaned_doc = dict(doc)  # Create a copy
-            if "_id" in cleaned_doc:
-                del cleaned_doc["_id"]  # Always remove existing _id
-            cleaned_documents.append(cleaned_doc)
+        # Remove _id in list comprehension (more efficient)
+        cleaned_documents = [
+            {k: v for k, v in doc.items() if k != "_id"}
+            for doc in documents
+        ]
 
-        result = self.client[db_name][col_name].insert_many(cleaned_documents)
+        result = self.client[db_name][col_name].insert_many(
+            cleaned_documents,
+            ordered=False  # Faster bulk insert
+        )
         return [str(_id) for _id in result.inserted_ids]
 
     # --------- GridFS Bucket Operations ---------
@@ -286,50 +327,65 @@ class MongoService:
         """List all GridFS buckets in a database"""
         logger.debug(f"Listing GridFS buckets in DB: {db_name}")
 
-        # Find all collections that end with .files (GridFS convention)
-        collections = self.client[db_name].list_collection_names()
-        buckets = []
+        db = self.client[db_name]
+        collections = db.list_collection_names()
+        
+        # Find .files collections and verify .chunks exist
+        bucket_names = set()
+        files_collections = [c for c in collections if c.endswith(".files")]
+        
+        for files_col in files_collections:
+            bucket_name = files_col[:-6]
+            chunks_col = f"{bucket_name}.chunks"
+            if chunks_col in collections:
+                bucket_names.add(bucket_name)
 
-        for collection in collections:
-            if collection.endswith(".files"):
-                bucket_name = collection[:-6]  # Remove .files suffix
-                # Verify corresponding .chunks collection exists
-                chunks_collection = f"{bucket_name}.chunks"
-                if chunks_collection in collections:
-                    # Get file count and total size for this bucket
-                    files_count = self.client[db_name][collection].count_documents({})
-
-                    # Calculate total size by summing length field
-                    pipeline = [
-                        {"$group": {"_id": None, "total_size": {"$sum": "$length"}}}
-                    ]
-                    size_result = list(
-                        self.client[db_name][collection].aggregate(pipeline)
-                    )
-                    total_size = size_result[0]["total_size"] if size_result else 0
-
-                    buckets.append(
-                        {
-                            "bucket_name": bucket_name,
-                            "files_count": files_count,
-                            "total_size": total_size,
-                        }
-                    )
-
-        # Apply search filter
+        # Apply search filter early
         if search:
-            buckets = [b for b in buckets if search.lower() in b["bucket_name"].lower()]
+            search_lower = search.lower()
+            bucket_names = {b for b in bucket_names if search_lower in b.lower()}
 
-        # Sort buckets by name
-        buckets.sort(key=lambda x: x["bucket_name"])
+        # Sort bucket names
+        sorted_buckets = sorted(bucket_names)
 
-        # Apply pagination
-        total = len(buckets)
+        # Calculate pagination
+        total = len(sorted_buckets)
         start = (page - 1) * page_size
         end = start + page_size
+        paginated_buckets = sorted_buckets[start:end]
+
+        # Use aggregation to get stats for paginated buckets only
+        buckets = []
+        for bucket_name in paginated_buckets:
+            files_collection = f"{bucket_name}.files"
+            
+            # Single aggregation to get both count and total size
+            pipeline = [
+                {
+                    "$facet": {
+                        "count": [{"$count": "total"}],
+                        "size": [{"$group": {"_id": None, "total_size": {"$sum": "$length"}}}]
+                    }
+                }
+            ]
+            
+            result = list(db[files_collection].aggregate(pipeline))
+            
+            if result:
+                files_count = result[0]["count"][0]["total"] if result[0]["count"] else 0
+                total_size = result[0]["size"][0]["total_size"] if result[0]["size"] else 0
+            else:
+                files_count = 0
+                total_size = 0
+
+            buckets.append({
+                "bucket_name": bucket_name,
+                "files_count": files_count,
+                "total_size": total_size,
+            })
 
         return {
-            "buckets": buckets[start:end],
+            "buckets": buckets,
             "total": total,
             "page": page,
             "page_size": page_size,
@@ -413,37 +469,59 @@ class MongoService:
             f"Listing GridFS files in bucket '{bucket_name}' in DB '{db_name}' with pagination"
         )
 
-        # Build query filter
-        query = {}
-        if search:
-            query["filename"] = {"$regex": search, "$options": "i"}
-
-        # Get total count
         files_collection = f"{bucket_name}.files"
-        total = self.client[db_name][files_collection].count_documents(query)
+        collection = self.client[db_name][files_collection]
+        
+        # Build match stage
+        match_stage = {}
+        if search:
+            match_stage["filename"] = {"$regex": search, "$options": "i"}
 
-        # Apply pagination
-        skip = (page - 1) * page_size
-        cursor = (
-            self.client[db_name][files_collection]
-            .find(query)
-            .skip(skip)
-            .limit(page_size)
-            .sort("uploadDate", -1)
-        )
+        # Use aggregation with $facet to get count and data in one query
+        pipeline = []
+        if match_stage:
+            pipeline.append({"$match": match_stage})
+        
+        pipeline.append({
+            "$facet": {
+                "total": [{"$count": "count"}],
+                "data": [
+                    {"$sort": {"uploadDate": -1}},
+                    {"$skip": (page - 1) * page_size},
+                    {"$limit": page_size},
+                    {"$project": {
+                        "_id": {"$toString": "$_id"},
+                        "filename": 1,
+                        "contentType": 1,
+                        "length": 1,
+                        "uploadDate": 1,
+                        "metadata": 1
+                    }}
+                ]
+            }
+        })
 
-        files = []
-        for file_doc in cursor:
-            files.append(
+        result = list(collection.aggregate(pipeline))
+        
+        if result:
+            total = result[0]["total"][0]["count"] if result[0]["total"] else 0
+            files_data = result[0]["data"]
+            
+            # Reformat field names for consistency
+            files = [
                 {
-                    "_id": str(file_doc["_id"]),
-                    "filename": file_doc.get("filename"),
-                    "content_type": file_doc.get("contentType"),
-                    "length": file_doc.get("length"),
-                    "upload_date": file_doc.get("uploadDate"),
-                    "metadata": file_doc.get("metadata", {}),
+                    "_id": f["_id"],
+                    "filename": f.get("filename"),
+                    "content_type": f.get("contentType"),
+                    "length": f.get("length"),
+                    "upload_date": f.get("uploadDate"),
+                    "metadata": f.get("metadata", {}),
                 }
-            )
+                for f in files_data
+            ]
+        else:
+            total = 0
+            files = []
 
         return {
             "data": files,
@@ -463,14 +541,31 @@ class MongoService:
         logger.debug(
             f"Getting metadata for file ID '{file_id}' from GridFS bucket '{bucket_name}' in DB '{db_name}'"
         )
+        
         files_collection = f"{bucket_name}.files"
-        file_doc = self.client[db_name][files_collection].find_one({"_id": _id})
-
-        if not file_doc:
+        
+        # Use aggregation for consistent string conversion
+        pipeline = [
+            {"$match": {"_id": _id}},
+            {"$project": {
+                "_id": {"$toString": "$_id"},
+                "filename": 1,
+                "contentType": 1,
+                "length": 1,
+                "uploadDate": 1,
+                "metadata": 1
+            }},
+            {"$limit": 1}
+        ]
+        
+        result = list(self.client[db_name][files_collection].aggregate(pipeline))
+        
+        if not result:
             return None
 
+        file_doc = result[0]
         return {
-            "_id": str(file_doc["_id"]),
+            "_id": file_doc["_id"],
             "filename": file_doc.get("filename"),
             "content_type": file_doc.get("contentType"),
             "length": file_doc.get("length"),
@@ -503,20 +598,26 @@ class MongoService:
             f"Deleting all files named '{filename}' from GridFS bucket '{bucket_name}' in DB '{db_name}'"
         )
 
-        # Find all files with this filename in the specific bucket
         files_collection = f"{bucket_name}.files"
-        file_docs = self.client[db_name][files_collection].find({"filename": filename})
-        deleted_count = 0
+        chunks_collection = f"{bucket_name}.chunks"
+        
+        # Get all file IDs matching the filename
+        file_ids = [
+            doc["_id"] 
+            for doc in self.client[db_name][files_collection].find(
+                {"filename": filename}, 
+                {"_id": 1}
+            )
+        ]
+        
+        if not file_ids:
+            return 0
 
-        fs = gridfs.GridFS(self.client[db_name], collection=bucket_name)
-        for file_doc in file_docs:
-            try:
-                fs.delete(file_doc["_id"])
-                deleted_count += 1
-            except NoFile:
-                continue
-
-        return deleted_count
+        # Bulk delete from both collections
+        self.client[db_name][files_collection].delete_many({"_id": {"$in": file_ids}})
+        self.client[db_name][chunks_collection].delete_many({"files_id": {"$in": file_ids}})
+        
+        return len(file_ids)
 
     def delete_bucket(self, db_name, bucket_name):
         """Delete an entire GridFS bucket (both .files and .chunks collections)"""

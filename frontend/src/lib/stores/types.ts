@@ -60,3 +60,4 @@ export interface BreadcrumbSegment {
   label?: string;
   isHome?: boolean;
 }
+
