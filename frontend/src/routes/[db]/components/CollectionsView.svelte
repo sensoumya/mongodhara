@@ -3,6 +3,7 @@
   import { base } from "$app/paths";
   import Modal from "$lib/components/Modal.svelte";
   import * as api from "$lib/stores/api";
+  import { formatCount } from "$lib/stores/format";
   import { addNotification } from "$lib/stores/notifications";
   import type { PaginatedCollections } from "$lib/stores/types";
   import { fade } from "svelte/transition";
@@ -106,7 +107,7 @@
         page: 1,
         page_size: pageSize,
       };
-      addNotification(e.message, "error");
+      addNotification(e instanceof Error ? e.message : String(e), "error");
     } finally {
       loading = false;
     }
@@ -140,7 +141,7 @@
       );
       await fetchCollections();
     } catch (e) {
-      addNotification(e.message, "error");
+      addNotification(e instanceof Error ? e.message : String(e), "error");
     } finally {
       showDeleteModal = false;
       colToDelete = null;
@@ -172,7 +173,7 @@
       currentPage = 1;
       await fetchCollections();
     } catch (e) {
-      addNotification(e.message, "error");
+      addNotification(e instanceof Error ? e.message : String(e), "error");
     }
   }
 
@@ -209,7 +210,7 @@
         );
       }
     } catch (e) {
-      addNotification(e.message, "error");
+      addNotification(e instanceof Error ? e.message : String(e), "error");
     } finally {
       exportingCol = null;
     }
@@ -283,9 +284,9 @@
                 </div>
                 <div class="flex items-center space-x-2 flex-shrink-0">
                   <div
-                    class="w-6 h-6 rounded-full bg-accent text-accent-content text-xs font-medium flex items-center justify-center"
+                    class="text-accent text-xs font-medium flex items-center justify-center"
                   >
-                    {collection.documents_count}
+                    #{formatCount(collection.documents_count)}
                   </div>
                   <button
                     on:click|stopPropagation={() =>

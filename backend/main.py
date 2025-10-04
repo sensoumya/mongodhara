@@ -9,9 +9,10 @@ import base64
 import binascii
 import io
 import json
+import os
 import re
 from typing import Optional
-import os
+
 import uvicorn
 
 # Load environment variables for Gunicorn compatibility
@@ -1105,8 +1106,8 @@ if __name__ == "__main__":
         port=8000,
         reload=True,
         reload_excludes=[
-            ".env/",
-            "venv/",
-            "__pycache__/",
+            ".env",
+            "venv",
+            "__pycache__",
         ],
     )
