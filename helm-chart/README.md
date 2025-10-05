@@ -1,11 +1,16 @@
-# Mongodhara Helm Chart
+# MongoDhārā Helm Chart
 
-This Helm chart deploys the Mongodhara application, a MongoDB admin interface with a FastAPI backend and Svelte frontend.
+This Helm chart deploys the **MongoDhārā** application — a MongoDB admin interface with a **FastAPI backend** and **Svelte frontend**. It provides a production-ready way to run MongoDhārā on Kubernetes with configurable scaling, ingress, TLS, and resource limits.
+
+---
 
 ## Prerequisites
 
 - Kubernetes 1.16+
 - Helm 3.2.0+
+- A running MongoDB instance (can be external or in-cluster)
+
+---
 
 ## Installing the Chart
 
@@ -15,6 +20,8 @@ To install the chart with the release name `my-mongodhara`:
 helm install my-mongodhara ./helm-chart
 ```
 
+---
+
 ## Uninstalling the Chart
 
 To uninstall/delete the `my-mongodhara` deployment:
@@ -23,9 +30,11 @@ To uninstall/delete the `my-mongodhara` deployment:
 helm delete my-mongodhara
 ```
 
+---
+
 ## Configuration
 
-The following table lists the configurable parameters of the Mongodhara chart and their default values.
+The following table lists the configurable parameters of the MongoDhārā chart and their default values.
 
 ### Global Configuration
 
@@ -76,44 +85,48 @@ The following table lists the configurable parameters of the Mongodhara chart an
 | `ingress.hosts[0].paths[1].path` | Backend API path                   | `/mongodharaapi`   |
 | `ingress.tls`                    | Ingress TLS configuration          | `[]`               |
 
+---
+
 ## Example Usage
 
 ### Basic Installation
 
 ```bash
-helm install mongodhara ./helm-chart \\
-  --set backend.env[0].value="mongodb://my-mongo:27017/mydb" \\
+helm install mongodhara ./helm-chart \
+  --set backend.env[0].value="mongodb://my-mongo:27017/mydb" \
   --set frontend.env[0].value="http://my-domain.com/mongodharaapi"
 ```
 
 ### Installation with Custom Images
 
 ```bash
-helm install mongodhara ./helm-chart \\
-  --set backend.image.repository="myregistry/mongodhara-backend" \\
-  --set backend.image.tag="v1.0.0" \\
-  --set frontend.image.repository="myregistry/mongodhara-frontend" \\
+helm install mongodhara ./helm-chart \
+  --set backend.image.repository="myregistry/mongodhara-backend" \
+  --set backend.image.tag="v1.0.0" \
+  --set frontend.image.repository="myregistry/mongodhara-frontend" \
   --set frontend.image.tag="v1.0.0"
 ```
 
 ### Installation with Ingress Configuration
 
 ```bash
-helm install mongodhara ./helm-chart \\
-  --set ingress.hosts[0].host="mongodhara.example.com" \\
-  --set ingress.annotations."kubernetes\.io/ingress\.class"="nginx" \\
+helm install mongodhara ./helm-chart \
+  --set ingress.hosts[0].host="mongodhara.example.com" \
+  --set ingress.annotations."kubernetes\.io/ingress\.class"="nginx" \
   --set ingress.annotations."cert-manager\.io/cluster-issuer"="letsencrypt-prod"
 ```
 
 ### Installation with Resource Limits
 
 ```bash
-helm install mongodhara ./helm-chart \\
-  --set backend.resources.limits.cpu="500m" \\
-  --set backend.resources.limits.memory="512Mi" \\
-  --set frontend.resources.limits.cpu="200m" \\
+helm install mongodhara ./helm-chart \
+  --set backend.resources.limits.cpu="500m" \
+  --set backend.resources.limits.memory="512Mi" \
+  --set frontend.resources.limits.cpu="200m" \
   --set frontend.resources.limits.memory="256Mi"
 ```
+
+---
 
 ## Upgrading
 
@@ -123,9 +136,11 @@ To upgrade the chart:
 helm upgrade mongodhara ./helm-chart
 ```
 
+---
+
 ## Values File Example
 
-Create a `my-values.yaml` file:
+You can use a custom `my-values.yaml` file for more maintainable deployments:
 
 ```yaml
 backend:
@@ -185,6 +200,8 @@ Then install with:
 helm install mongodhara ./helm-chart -f my-values.yaml
 ```
 
+---
+
 ## Troubleshooting
 
 ### Check pod status
@@ -209,3 +226,15 @@ kubectl port-forward svc/mongodhara-frontend 8080:80
 # Backend
 kubectl port-forward svc/mongodhara-backend 8000:80
 ```
+
+---
+
+## Production Notes
+
+- Enable **replicas > 1** for HA in production.
+- Always configure **TLS** via ingress and cert-manager.
+- Use **resource limits/requests** for predictable scheduling.
+- Store MongoDB credentials in **Kubernetes Secrets** instead of plain values.
+- Consider using a managed MongoDB service (e.g., Atlas) for reliability.
+
+---
