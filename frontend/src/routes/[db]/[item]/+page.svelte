@@ -467,8 +467,8 @@
   function isFileViewable(doc: any): boolean {
     if (!isGridFS || !doc.filename) return false;
 
-    // Check file size (30MB limit)
-    const maxSizeBytes = 30 * 1024 * 1024; // 30MB in bytes
+    // Check file size (5MB limit)
+    const maxSizeBytes = 5 * 1024 * 1024; // 5MB in bytes
     if (doc.length && doc.length > maxSizeBytes) return false;
 
     // Check file extension
@@ -1214,7 +1214,7 @@
                                   Loading...
                                 {:else}
                                   <i class="fa-solid fa-eye"></i>
-                                  View in Browser
+                                  View File Content
                                 {/if}
                               </button>
                             </li>

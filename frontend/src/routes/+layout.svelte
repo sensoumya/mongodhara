@@ -1,22 +1,17 @@
 <script lang="ts">
-  import { resolve } from "$app/paths";
-  import AuthExpiredOverlay from "$lib/components/AuthExpiredOverlay.svelte";
+  import { base, resolve } from "$app/paths";
+  import ErrOverlay from "$lib/components/ErrorOverlay.svelte";
   import NotificationList from "$lib/components/NotificationList.svelte";
   import { nextTheme, setTheme, theme } from "$lib/stores/theme";
   import { onMount } from "svelte";
   import "../app.css";
 
-  // Use the derived store to get the next theme's data automatically.
-  // No need for a separate reactive block.
-  // The 'theme' store is still imported to keep the DOM element updated.
-
-  // Initialize theme on mount.
   onMount(() => {
     if (!localStorage.getItem("theme")) {
       const prefersDark = window.matchMedia(
         "(prefers-color-scheme: dark)"
       ).matches;
-      setTheme(prefersDark ? "forest" : "emerald");
+      setTheme(prefersDark ? "dark" : "light");
     }
   });
 
@@ -30,6 +25,12 @@
     event.preventDefault();
     window.location.href = resolve("/");
   }
+
+  // Handle tutorial opening in new tab
+  function handleTutorialOpen() {
+    const pdfUrl = ${base}/tutorial.pdf;
+    window.open(pdfUrl, "_blank");
+  }
 </script>
 
 <div
@@ -37,7 +38,7 @@
   data-theme={$theme}
 >
   <!-- Global error overlay -->
-  <AuthExpiredOverlay />
+  <ErrOverlay />
 
   <div class="relative min-h-screen">
     <header class="bg-base-200 shadow-md sticky top-0 z-50">
@@ -61,13 +62,25 @@
           </span>
         </a>
 
-        <button
-          class="btn btn-ghost btn-sm tooltip tooltip-bottom"
-          on:click={toggleTheme}
-          data-tip={$nextTheme.tooltip}
-        >
-          <i class="fa-solid {$nextTheme.icon} text-xl"></i>
-        </button>
+        <div class="flex items-center gap-2">
+          <button
+            on:click={handleTutorialOpen}
+            class="btn btn-ghost btn-sm tooltip tooltip-bottom"
+            data-tip="Open Tutorial Guide"
+            aria-label="Open Tutorial Guide"
+          >
+            <i class="fa-regular fa-circle-play text-xl"></i>
+          </button>
+
+          <button
+            class="btn btn-ghost btn-sm tooltip tooltip-bottom"
+            on:click={toggleTheme}
+            data-tip={$nextTheme.tooltip}
+            aria-label="Toggle Theme"
+          >
+            <i class="fa-solid {$nextTheme.icon} text-xl"></i>
+          </button>
+        </div>
       </div>
     </header>
 
