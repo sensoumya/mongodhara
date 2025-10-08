@@ -17,7 +17,7 @@ const initialThemeName =
   typeof localStorage !== "undefined" &&
   availableThemes.some((t) => t.name === localStorage.getItem("theme"))
     ? localStorage.getItem("theme")!
-    : "emerald";
+    : "light";
 
 export const theme = writable<string>(initialThemeName);
 
