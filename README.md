@@ -3,13 +3,12 @@
 ---
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![Node.js](https://img.shields.io/badge/node.js-16+-green.svg)](https://nodejs.org/)
+[![CodeQL](https://github.com/sensoumya/mongodhara/actions/workflows/codeql.yml/badge.svg)](https://github.com/sensoumya/mongodhara/actions/workflows/codeql.yml)
+[![Trivy Security Scan](https://github.com/sensoumya/mongodhara/actions/workflows/trivy.yml/badge.svg)](https://github.com/sensoumya/mongodhara/actions/workflows/trivy.yml)
+[![Dependabot Updates](https://github.com/sensoumya/mongodhara/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/sensoumya/mongodhara/actions/workflows/dependabot/dependabot-updates)
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.117+-009688.svg)](https://fastapi.tiangolo.com/)
-[![Svelte](https://img.shields.io/badge/Svelte-4+-ff3e00.svg)](https://svelte.dev/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-Compatible-47A248.svg)](https://www.mongodb.com/)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-Ready-326CE5.svg)](https://kubernetes.io/)
+[![Svelte](https://img.shields.io/badge/Svelte-5.0+-ff3e00.svg)](https://svelte.dev/)
 
 _MongoDB management made elegant, fast, and intuitive._
 
