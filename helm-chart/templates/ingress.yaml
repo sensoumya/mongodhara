@@ -1,0 +1,290 @@
+{{/* Frontend Ingress */}}
+{{- if and .Values.ingress.enabled .Values.ingress.frontend.enabled .Values.frontend.enabled }}
+{{- $releaseName := .Release.Name }}
+{{- $svcPortFrontend := .Values.frontend.service.port }}
+{{- $baseAnnotations := .Values.ingress.baseAnnotations }}
+{{- $frontendAnnotations := .Values.ingress.frontend.annotations }}
+{{- $oauthAnnotations := .Values.ingress.auth.oauth.annotations }}
+
+{{/* Merge frontend annotations */}}
+{{- $mergedAnnotations := merge $frontendAnnotations $baseAnnotations }}
+{{- if .Values.ingress.auth.oauth.enabled }}
+  {{- $mergedAnnotations = merge $oauthAnnotations $mergedAnnotations }}
+{{- end }}
+
+{{/* Add ingress class annotation */}}
+{{- if and .Values.ingress.className (not (hasKey $mergedAnnotations "kubernetes.io/ingress.class")) }}
+  {{- $_ := set $mergedAnnotations "kubernetes.io/ingress.class" .Values.ingress.className}}
+{{- end }}
+
+{{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
+apiVersion: networking.k8s.io/v1
+{{- else if semverCompare ">=1.14-0" .Capabilities.KubeVersion.GitVersion }}
+apiVersion: networking.k8s.io/v1beta1
+{{- else }}
+apiVersion: extensions/v1beta1
+{{- end }}
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-web
+  labels:
+    {{- include "mongodhara.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingress-frontend
+  annotations:
+    {{- toYaml $mergedAnnotations | nindent 4 }}
+spec:
+  {{- if and .Values.ingress.className (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion) }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if and .Values.ingress.tls.enabled .Values.ingress.tls.secretName }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.frontend.path }}
+            {{- if and .Values.ingress.frontend.pathType (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion) }}
+            pathType: {{ .Values.ingress.frontend.pathType }}
+            {{- end }}
+            backend:
+              {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
+              service:
+                name: {{ $releaseName }}-web
+                port:
+                  number: {{ $svcPortFrontend }}
+              {{- else }}
+              serviceName: {{ $releaseName }}-web
+              servicePort: {{ $svcPortFrontend }}
+              {{- end }}
+---
+{{/* Backend API Ingress (non-GridFS) */}}
+{{- end }}
+{{- if and .Values.ingress.enabled .Values.ingress.backend.enabled .Values.backend.enabled }}
+{{- $releaseName := .Release.Name }}
+{{- $svcPortBackend := .Values.backend.service.port }}
+{{- $baseAnnotations := .Values.ingress.baseAnnotations }}
+{{- $backendAnnotations := .Values.ingress.backend.annotations }}
+{{- $oauthAnnotations := .Values.ingress.auth.oauth.annotations }}
+
+{{/* Merge backend annotations */}}
+{{- $mergedAnnotations := merge $backendAnnotations $baseAnnotations }}
+{{- if .Values.ingress.auth.oauth.enabled }}
+  {{- $backendOauthAnnotations := omit $oauthAnnotations "nginx.ingress.kubernetes.io/auth-signin" }}
+  {{- $mergedAnnotations = merge $backendOauthAnnotations $mergedAnnotations }}
+{{- end }}
+
+{{/* Add ingress class annotation */}}
+{{- if and .Values.ingress.className (not (hasKey $mergedAnnotations "kubernetes.io/ingress.class")) }}
+  {{- $_ := set $mergedAnnotations "kubernetes.io/ingress.class" .Values.ingress.className}}
+{{- end }}
+
+{{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
+apiVersion: networking.k8s.io/v1
+{{- else if semverCompare ">=1.14-0" .Capabilities.KubeVersion.GitVersion }}
+apiVersion: networking.k8s.io/v1beta1
+{{- else }}
+apiVersion: extensions/v1beta1
+{{- end }}
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-api
+  labels:
+    {{- include "mongodhara.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingress-backend
+  annotations:
+    {{- toYaml $mergedAnnotations | nindent 4 }}
+spec:
+  {{- if and .Values.ingress.className (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion) }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if and .Values.ingress.tls.enabled .Values.ingress.tls.secretName }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.backend.path }}
+            {{- if and .Values.ingress.backend.pathType (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion) }}
+            pathType: {{ .Values.ingress.backend.pathType }}
+            {{- end }}
+            backend:
+              {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
+              service:
+                name: {{ $releaseName }}-api
+                port:
+                  number: {{ $svcPortBackend }}
+              {{- else }}
+              serviceName: {{ $releaseName }}-api
+              servicePort: {{ $svcPortBackend }}
+              {{- end }}
+---
+{{/* GridFS Upload Ingress */}}
+{{- end }}
+{{- if and .Values.ingress.enabled .Values.ingress.gridfsUpload.enabled .Values.backend.enabled }}
+{{- $releaseName := .Release.Name }}
+{{- $svcPortBackend := .Values.backend.service.port }}
+{{- $baseAnnotations := .Values.ingress.baseAnnotations }}
+{{- $gridfsUploadAnnotations := .Values.ingress.gridfsUpload.annotations }}
+{{- $oauthAnnotations := .Values.ingress.auth.oauth.annotations }}
+
+{{/* Merge GridFS Upload annotations */}}
+{{- $mergedAnnotations := merge $gridfsUploadAnnotations $baseAnnotations }}
+{{- if .Values.ingress.auth.oauth.enabled }}
+  {{- $backendOauthAnnotations := omit $oauthAnnotations "nginx.ingress.kubernetes.io/auth-signin" }}
+  {{- $mergedAnnotations = merge $backendOauthAnnotations $mergedAnnotations }}
+{{- end }}
+
+{{/* Add use-regex annotation for regex path matching */}}
+{{- $_ := set $mergedAnnotations "nginx.ingress.kubernetes.io/use-regex" "true" }}
+
+{{/* Add ingress class annotation */}}
+{{- if and .Values.ingress.className (not (hasKey $mergedAnnotations "kubernetes.io/ingress.class")) }}
+  {{- $_ := set $mergedAnnotations "kubernetes.io/ingress.class" .Values.ingress.className}}
+{{- end }}
+
+{{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
+apiVersion: networking.k8s.io/v1
+{{- else if semverCompare ">=1.14-0" .Capabilities.KubeVersion.GitVersion }}
+apiVersion: networking.k8s.io/v1beta1
+{{- else }}
+apiVersion: extensions/v1beta1
+{{- end }}
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-api-upload
+  labels:
+    {{- include "mongodhara.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingress-gridfs-upload
+  annotations:
+    {{- toYaml $mergedAnnotations | nindent 4 }}
+spec:
+  {{- if and .Values.ingress.className (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion) }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if and .Values.ingress.tls.enabled .Values.ingress.tls.secretName }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+        # Handle upload path: /mdhara/api/.../upload
+        - path: /mdhara/api/.*/upload$
+          pathType: ImplementationSpecific
+          backend:
+            {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
+            service:
+              name: {{ $releaseName }}-api
+              port:
+                number: {{ $svcPortBackend }}
+            {{- else }}
+            serviceName: {{ $releaseName }}-api
+            servicePort: {{ $svcPortBackend }}
+            {{- end }}
+
+        # Handle base64 encoded upload path: ends with "dXBsb2Fk"
+        - path: /mdhara/api/.*dXBsb2Fk$
+          pathType: ImplementationSpecific
+          backend:
+            {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
+            service:
+              name: {{ $releaseName }}-api
+              port:
+                number: {{ $svcPortBackend }}
+            {{- else }}
+            serviceName: {{ $releaseName }}-api
+            servicePort: {{ $svcPortBackend }}
+            {{- end }}
+---
+{{/* GridFS Download Ingress */}}
+{{- end }}
+{{- if and .Values.ingress.enabled .Values.ingress.gridfsDownload.enabled .Values.backend.enabled }}
+{{- $releaseName := .Release.Name }}
+{{- $svcPortBackend := .Values.backend.service.port }}
+{{- $baseAnnotations := .Values.ingress.baseAnnotations }}
+{{- $gridfsDownloadAnnotations := .Values.ingress.gridfsDownload.annotations }}
+{{- $oauthAnnotations := .Values.ingress.auth.oauth.annotations }}
+
+{{/* Merge GridFS Download annotations */}}
+{{- $mergedAnnotations := merge $gridfsDownloadAnnotations $baseAnnotations }}
+{{- if .Values.ingress.auth.oauth.enabled }}
+  {{- $backendOauthAnnotations := omit $oauthAnnotations "nginx.ingress.kubernetes.io/auth-signin" }}
+  {{- $mergedAnnotations = merge $backendOauthAnnotations $mergedAnnotations }}
+{{- end }}
+
+{{/* Add use-regex annotation for regex path matching */}}
+{{- $_ := set $mergedAnnotations "nginx.ingress.kubernetes.io/use-regex" "true" }}
+
+{{/* Add ingress class annotation */}}
+{{- if and .Values.ingress.className (not (hasKey $mergedAnnotations "kubernetes.io/ingress.class")) }}
+  {{- $_ := set $mergedAnnotations "kubernetes.io/ingress.class" .Values.ingress.className}}
+{{- end }}
+
+{{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
+apiVersion: networking.k8s.io/v1
+{{- else if semverCompare ">=1.14-0" .Capabilities.KubeVersion.GitVersion }}
+apiVersion: networking.k8s.io/v1beta1
+{{- else }}
+apiVersion: extensions/v1beta1
+{{- end }}
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-api-download
+  labels:
+    {{- include "mongodhara.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingress-gridfs-download
+  annotations:
+    {{- toYaml $mergedAnnotations | nindent 4 }}
+spec:
+  {{- if and .Values.ingress.className (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion) }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if and .Values.ingress.tls.enabled .Values.ingress.tls.secretName }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+        # Handle download path: /mdhara/api/.../download
+        - path: /mdhara/api/.*/download$
+          pathType: ImplementationSpecific
+          backend:
+            {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
+            service:
+              name: {{ $releaseName }}-api
+              port:
+                number: {{ $svcPortBackend }}
+            {{- else }}
+            serviceName: {{ $releaseName }}-api
+            servicePort: {{ $svcPortBackend }}
+            {{- end }}
+
+        # Handle base64 encoded download path: ends with "ZG93bmxvYWQ"
+        - path: /mdhara/api/.*ZG93bmxvYWQ$
+          pathType: ImplementationSpecific
+          backend:
+            {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
+            service:
+              name: {{ $releaseName }}-api
+              port:
+                number: {{ $svcPortBackend }}
+            {{- else }}
+            serviceName: {{ $releaseName }}-api
+            servicePort: {{ $svcPortBackend }}
+            {{- end }}
+{{- end }}

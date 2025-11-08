@@ -25,6 +25,9 @@ RUN npm install --omit=dev
 # Copy the built application from the builder stage
 COPY --from=builder /app/build /app/build
 
+# Copy static files
+COPY --from=builder /app/static /app/static
+
 # Expose the port the app will run on
 EXPOSE 3000
 
@@ -32,8 +35,9 @@ EXPOSE 3000
 ENV NODE_ENV=production
 
 # Create a non-root user and switch to it
-RUN useradd --create-home appuser && chown -R appuser /app
+RUN useradd --create-home appuser && \
+    chown -R appuser:appuser /app && \
+    chmod -R u+w /app/build
 USER appuser
 
-# Command to run the application
 CMD ["node", "build/index.js"]

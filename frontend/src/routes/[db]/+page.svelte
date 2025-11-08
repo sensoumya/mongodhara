@@ -3,7 +3,7 @@
   import { base } from "$app/paths";
   import { page } from "$app/stores";
   import Breadcrumb from "$lib/components/Breadcrumb.svelte";
-  import SearchAndPagination from "$lib/components/SearchAndPagination.svelte";
+  import Pagination from "$lib/components/Pagination.svelte";
   import { onMount } from "svelte";
   import { fade } from "svelte/transition";
   import CollectionsView from "./components/CollectionsView.svelte";
@@ -13,7 +13,19 @@
   let { db } = $page.params;
 
   // Ensure db is not undefined
-  $: dbName = db || "";
+  $: dbId = db || "";
+
+  // Database name derived from API responses
+  $: dbName =
+    collectionsResponse?.database?.name || gridfsResponse?.database?.name || "";
+
+  /**
+   * Checks if a database is a system database that should not be modified
+   */
+  function isSystemDatabase(dbName: string): boolean {
+    const systemDatabases = ["admin", "local", "config", "mongodhara"];
+    return systemDatabases.includes(dbName);
+  }
 
   // Shared state for pagination and search
   let currentPage: number = 1;
@@ -21,6 +33,15 @@
   let loading: boolean = false;
   let carouselIndex: number = 0;
   let totalPages: number = 1;
+  let pageSize: number =
+    typeof window !== "undefined"
+      ? parseInt(localStorage.getItem("pageSize_collections") || "20")
+      : 20;
+
+  // Save pageSize to localStorage whenever it changes
+  $: if (typeof window !== "undefined") {
+    localStorage.setItem("pageSize_collections", pageSize.toString());
+  }
 
   // Initialize carousel index based on URL parameter
   $: {
@@ -41,9 +62,15 @@
   let collectionsResponse: any = { collections: [], total: 0 };
   let gridfsResponse: any = { buckets: [], total: 0 };
 
+  // Loading states from components
+  let collectionsLoading: boolean = false;
+  let gridfsLoading: boolean = false;
+
   // Computed properties
   $: placeholder =
     carouselIndex === 0 ? "Search collection..." : "Search GridFS bucket...";
+  $: currentViewLoading =
+    carouselIndex === 0 ? collectionsLoading : gridfsLoading;
 
   /**
    * Handles carousel navigation and data fetching.
@@ -82,15 +109,12 @@
    */
   function handleSearchSubmit() {
     currentPage = 1;
-    fetchData();
+    fetchData(true); // Always force refresh for search
   }
 
-  /**
-   * Handles page changes.
-   */
   function handlePageChange(event: CustomEvent<{ page: number }>) {
     currentPage = event.detail.page;
-    fetchData();
+    fetchData(false); // Don't force refresh for pagination
   }
 
   /**
@@ -98,7 +122,7 @@
    */
   function changePage(page: number) {
     currentPage = page;
-    fetchData();
+    fetchData(false); // Don't force refresh for pagination
   }
 
   /**
@@ -115,11 +139,11 @@
   /**
    * Fetches data based on current view.
    */
-  function fetchData() {
+  function fetchData(forceRefresh: boolean = false) {
     if (carouselIndex === 0) {
-      collectionsView?.fetchCollections();
+      collectionsView?.fetchCollections(forceRefresh);
     } else {
-      gridfsView?.fetchGridFSBuckets();
+      gridfsView?.fetchGridFSBuckets(forceRefresh);
     }
   }
 
@@ -140,103 +164,94 @@
 </svelte:head>
 
 <div
-  class="h-[calc(100vh-90px)] flex flex-col p-2 md:p-4 bg-base-100 text-base-content"
-  transition:fade={{ duration: 200 }}
+  class="h-[calc(100vh-90px)] flex flex-col px-2 pb-2 bg-base-100 text-base-content"
 >
   <div class="max-w-7xl mx-auto w-full h-full flex flex-col">
-    <div class="mb-4">
+    <div class="mb-2">
       <!-- Database Carousel Navigation -->
       <DatabaseCarousel
         currentIndex={carouselIndex}
         on:change={handleCarouselChange}
       />
 
-      <!-- Breadcrumb -->
-      <Breadcrumb
-        showBackButton={true}
-        segments={[
-          { name: "Home", isHome: true, href: `${base}/` },
-          { name: db || "", href: "", label: "Database" },
-        ]}
-      />
-
-      <!-- Search and Create Controls -->
+      <!-- Breadcrumb and Controls Row -->
       <div
-        class="flex flex-col md:flex-row justify-between items-center mb-4 space-y-2 md:space-y-0"
+        class="flex flex-col md:flex-row md:items-center justify-between mb-2 gap-2"
       >
-        <form
-          on:submit|preventDefault={handleSearchSubmit}
-          class="relative w-full md:w-1/3 flex"
-        >
-          <label
-            class="input input-bordered input-secondary flex items-center gap-2 w-full"
+        <div class="flex-1">
+          <Breadcrumb
+            showBackButton={true}
+            segments={[
+              { name: "Home", isHome: true, href: `${base}/` },
+              {
+                name: dbName,
+                href: "",
+                label: "Database",
+                loading: currentViewLoading && !dbName,
+              },
+            ]}
+          />
+        </div>
+        <div class="flex items-center gap-2">
+          <form
+            on:submit|preventDefault={handleSearchSubmit}
+            class="flex w-full max-w-xs"
           >
-            <input
-              type="text"
-              class="grow"
-              bind:value={searchTerm}
-              {placeholder}
-            />
-            {#if searchTerm}
-              <button
-                type="button"
-                on:click={() => {
-                  searchTerm = "";
-                  handleSearchSubmit();
-                }}
-                class="btn btn-sm btn-ghost"
-                aria-label="Clear search input"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            {/if}
-            <button
-              type="submit"
-              class="btn btn-sm btn-ghost"
-              aria-label="Search"
+            <label
+              class="input input-ghost input-sm flex items-center gap-2 w-full focus-within:outline-none"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 16 16"
-                fill="currentColor"
-                class="h-4 w-4 opacity-70"
+              <input
+                type="text"
+                class="text-base outline-none"
+                bind:value={searchTerm}
+                {placeholder}
+              />
+              <div class="flex items-center" style="width: 24px;">
+                {#if searchTerm}
+                  <button
+                    type="button"
+                    on:click={() => {
+                      searchTerm = "";
+                      handleSearchSubmit();
+                    }}
+                    class="btn btn-sm btn-ghost btn-circle"
+                    aria-label="Clear search input"
+                    in:fade={{ duration: 150 }}
+                    out:fade={{ duration: 150 }}
+                  >
+                    <i class="fas fa-times"></i>
+                  </button>
+                {/if}
+              </div>
+              <button
+                type="submit"
+                class="btn btn-sm btn-ghost btn-circle"
+                aria-label={searchTerm ? "Search" : "Reload"}
+                disabled={currentViewLoading}
               >
-                <path
-                  fill-rule="evenodd"
-                  d="M9.965 11.026a5 5 0 1 1 1.06-1.06l2.094 2.093a.75.75 0 0 1-1.06 1.06l-2.094-2.094ZM10.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z"
-                  clip-rule="evenodd"
-                />
-              </svg>
+                <i class="fas {searchTerm ? 'fa-search' : 'fa-rotate-right'}"
+                ></i>
+              </button>
+            </label>
+          </form>
+          {#if !isSystemDatabase(dbName)}
+            <button
+              on:click={handleCreate}
+              class="btn btn-secondary btn-sm flex items-center gap-1"
+              aria-label={carouselIndex === 0
+                ? "Create new collection"
+                : "Create new GridFS bucket"}
+            >
+              <i class="fas fa-plus"></i>
+              <span class="hidden md:inline">Create</span>
             </button>
-          </label>
-        </form>
-        <button
-          on:click={handleCreate}
-          class="btn btn-secondary px-4 py-3 rounded-md transition-colors duration-300 tooltip"
-          aria-label={carouselIndex === 0
-            ? "Create new collection"
-            : "Create new GridFS bucket"}
-          data-tip={carouselIndex === 0
-            ? "Create new collection"
-            : "Create new GridFS bucket"}
-        >
-          <i class="fas fa-plus mr-0"></i>
-        </button>
+          {/if}
+        </div>
       </div>
     </div>
+
+    <!-- Separator line -->
+    <div class="border-t border-base-content/10 mb-2"></div>
 
     <!-- Main Content Area -->
     <div class="flex-grow overflow-y-auto mb-4 relative">
@@ -245,48 +260,43 @@
           bind:this={collectionsView}
           bind:collectionsResponse
           bind:totalPages
-          db={dbName}
+          bind:isLoading={collectionsLoading}
+          db={dbId}
+          {dbName}
           {searchTerm}
           {currentPage}
           {loading}
+          {pageSize}
         />
       {:else}
         <GridFSView
           bind:this={gridfsView}
           bind:gridfsResponse
           bind:totalPages
-          db={dbName}
+          bind:isLoading={gridfsLoading}
+          db={dbId}
           {searchTerm}
           {currentPage}
           {loading}
+          {pageSize}
         />
       {/if}
     </div>
 
     <!-- Pagination Controls -->
-    <SearchAndPagination
+    <Pagination
       {currentPage}
       {totalPages}
-      {loading}
-      showSearch={false}
-      showCreateButton={false}
+      loading={false}
+      {pageSize}
+      showPageSize={true}
       on:pageChange={handlePageChange}
-    >
-      <div slot="pagination-info" class="text-sm text-accent">
-        {#if carouselIndex === 0}
-          Displaying {collectionsResponse.collections?.length ===
-          collectionsResponse.total
-            ? "all"
-            : `${(currentPage - 1) * 16 + 1} - ${Math.min(currentPage * 16, collectionsResponse.total || 0)}`}
-          of {collectionsResponse.total || 0} collections
-        {:else if carouselIndex === 1}
-          Displaying {gridfsResponse.buckets?.length === gridfsResponse.total
-            ? "all"
-            : `${(currentPage - 1) * 16 + 1} - ${Math.min(currentPage * 16, gridfsResponse.total || 0)}`}
-          of {gridfsResponse.total || 0} GridFS buckets
-        {/if}
-      </div>
-    </SearchAndPagination>
+      on:pageSizeChange={(e) => {
+        pageSize = e.detail.pageSize;
+        currentPage = 1;
+        fetchData(true); // Force refresh when page size changes
+      }}
+    />
   </div>
 </div>
 

@@ -1,0 +1,260 @@
+{{/*
+Post-deploy hook: Generate OPAQUE_ID_ENCRYPTION_KEY and update existing secret
+*/}}
+{{- if and .Values.backend.enabled .Values.global.features.opaqueIds.autoGenerateKey }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-keygen
+  labels:
+    {{- include "mongodhara.labels" . | nindent 4 }}
+    app.kubernetes.io/component: keygen-hook
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    metadata:
+      name: {{ .Release.Name }}-keygen
+      labels:
+        {{- include "mongodhara.labels" . | nindent 8 }}
+        app.kubernetes.io/component: keygen-hook
+    spec:
+      serviceAccountName: {{ include "mongodhara.backend.serviceAccountName" . }}
+      restartPolicy: Never
+      containers:
+      - name: keygen
+        image: alpine/k8s:1.27.4
+        command:
+        - /bin/sh
+        - -c
+        - |
+          # Generate cryptographically secure 128-bit key using /dev/urandom
+          KEY=$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | base64 | tr -d '\n')
+          
+          # Verify key was generated
+          if [ -z "$KEY" ]; then
+            echo "ERROR: Failed to generate encryption key"
+            exit 1
+          fi
+          
+          echo "Generated encryption key: $KEY"
+
+          # Update the existing secret with stringData (kubectl handles base64 encoding)
+          kubectl patch secret {{ .Release.Name }}-creds \
+            -n {{ .Release.Namespace }} \
+            --type merge \
+            -p "{\"stringData\":{\"OPAQUE_ID_ENCRYPTION_KEY\":\"$KEY\"}}"
+
+          echo "Stored OPAQUE_ID_ENCRYPTION_KEY in secret {{ .Release.Name }}-creds"
+        env:
+        - name: RELEASE_NAME
+          value: {{ .Release.Name | quote }}
+        - name: RELEASE_NAMESPACE
+          value: {{ .Release.Namespace | quote }}
+{{- end }}
+---
+{{/*
+Post-deploy hook: Handle authorization database initialization
+*/}}
+{{- if and .Values.backend.enabled .Values.global.features.authz.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-authz-init
+  labels:
+    {{- include "mongodhara.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authz-init-hook
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    metadata:
+      name: {{ .Release.Name }}-authz-init
+      labels:
+        {{- include "mongodhara.labels" . | nindent 8 }}
+        app.kubernetes.io/component: authz-init-hook
+    spec:
+      serviceAccountName: {{ include "mongodhara.backend.serviceAccountName" . }}
+      restartPolicy: Never
+      containers:
+      - name: authz-init
+        image: python:3.11-slim
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          # Install pymongo
+          pip install --no-cache-dir pymongo
+          
+          # Check for existing mongodhara database
+          DB_EXISTS=$(python3 <<'PYEOF'
+          from pymongo import MongoClient
+          import os
+          client = MongoClient(os.environ['MONGO_URI'])
+          db_list = client.list_database_names()
+          print('1' if 'mongodhara' in db_list else '0')
+          PYEOF
+          )
+
+          if [ "$DB_EXISTS" = "1" ]; then
+            ACTION="{{ .Values.global.features.authz.existingDatabase.action }}"
+            case $ACTION in
+              skip)
+                echo "mongodhara database already exists, skipping initialization (action: skip)"
+                exit 0
+                ;;
+              warn)
+                echo "WARNING: mongodhara database already exists, proceeding with initialization (action: warn)"
+                ;;
+              recreate)
+                echo "Recreating mongodhara database (action: recreate)"
+                python3 <<'PYEOF'
+          from pymongo import MongoClient
+          import os
+          client = MongoClient(os.environ['MONGO_URI'])
+          client.drop_database('mongodhara')
+          print('Dropped existing mongodhara database')
+          PYEOF
+                ;;
+              *)
+                echo "Unknown action for existing database: $ACTION"
+                exit 1
+                ;;
+            esac
+          fi
+
+          # Create initial admin user if no permissions exist
+          echo "Checking for initial admin user..."
+          PERMISSIONS_EXIST=$(python3 <<'PYEOF'
+          from pymongo import MongoClient
+          import os
+          client = MongoClient(os.environ['MONGO_URI'])
+          db = client['mongodhara']
+          count = db['user_permissions'].count_documents({})
+          print('1' if count > 0 else '0')
+          PYEOF
+          )
+
+          if [ "$PERMISSIONS_EXIST" = "0" ]; then
+            ADMIN_EMAIL="{{ .Values.global.features.authz.initialAdminEmail }}"
+            if [ -n "$ADMIN_EMAIL" ]; then
+              echo "Creating initial admin user: $ADMIN_EMAIL"
+              python3 <<PYEOF
+          from pymongo import MongoClient
+          from datetime import datetime
+          import os
+
+          client = MongoClient(os.environ['MONGO_URI'])
+          db = client['mongodhara']
+          collection = db['user_permissions']
+
+          # Create admin user with admin role (gets full permissions automatically)
+          admin_doc = {
+              'email': '$ADMIN_EMAIL',
+              'role': 'admin',
+              'groups': [],
+              'custom_grants': {},
+              'isActive': True,
+              'created_at': datetime.utcnow(),
+              'updated_at': datetime.utcnow()
+          }
+
+          collection.insert_one(admin_doc)
+          print(f'Created initial admin user: $ADMIN_EMAIL with admin role')
+          PYEOF
+            else
+              echo "No initial admin email configured, skipping admin user creation"
+            fi
+          else
+            echo "Permissions already exist, skipping initial admin creation"
+          fi
+
+          echo "Authorization database initialization completed"
+        env:
+        {{- if .Values.backend.mongoUri.secretRef.enabled }}
+        # MONGO_URI from secret (same as backend)
+        - name: MONGO_URI
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.backend.mongoUri.secretRef.secretName }}
+              key: {{ .Values.backend.mongoUri.secretRef.key }}
+        {{- else if .Values.backend.mongoUri.value }}
+        # MONGO_URI from direct value (same as backend)
+        - name: MONGO_URI
+          value: {{ .Values.backend.mongoUri.value | quote }}
+        {{- end }}
+        - name: RELEASE_NAME
+          value: {{ .Release.Name | quote }}
+        - name: RELEASE_NAMESPACE
+          value: {{ .Release.Namespace | quote }}
+{{- end }}
+---
+{{/*
+Pre-delete hook: Cleanup authorization database if configured
+*/}}
+{{- if and .Values.backend.enabled .Values.global.features.authz.enabled .Values.global.features.authz.databaseCleanup.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-authz-cleanup
+  labels:
+    {{- include "mongodhara.labels" . | nindent 4 }}
+    app.kubernetes.io/component: authz-cleanup-hook
+  annotations:
+    "helm.sh/hook": pre-delete
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    metadata:
+      name: {{ .Release.Name }}-authz-cleanup
+      labels:
+        {{- include "mongodhara.labels" . | nindent 8 }}
+        app.kubernetes.io/component: authz-cleanup-hook
+    spec:
+      serviceAccountName: {{ include "mongodhara.backend.serviceAccountName" . }}
+      restartPolicy: Never
+      containers:
+      - name: authz-cleanup
+        image: python:3.11-slim
+        command:
+        - /bin/sh
+        - -c
+        - |
+          # Install pymongo
+          pip install --no-cache-dir pymongo
+          
+          echo "Cleaning up authorization database..."
+          python3 <<PYEOF
+          from pymongo import MongoClient
+          import os
+          client = MongoClient(os.environ['MONGO_URI'])
+          if os.environ.get('DROP_DATABASE', '').lower() == 'true':
+              client.drop_database('mongodhara')
+              print('Dropped mongodhara database')
+          else:
+              client.mongodhara.drop_collection('user_permissions')
+              print('Dropped user_permissions collection')
+          PYEOF
+        env:
+        {{- if .Values.backend.mongoUri.secretRef.enabled }}
+        # MONGO_URI from secret (same as backend)
+        - name: MONGO_URI
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.backend.mongoUri.secretRef.secretName }}
+              key: {{ .Values.backend.mongoUri.secretRef.key }}
+        {{- else if .Values.backend.mongoUri.value }}
+        # MONGO_URI from direct value (same as backend)
+        - name: MONGO_URI
+          value: {{ .Values.backend.mongoUri.value | quote }}
+        {{- end }}
+        - name: DROP_DATABASE
+          value: {{ .Values.global.features.authz.databaseCleanup.dropDatabase | quote }}
+        - name: RELEASE_NAME
+          value: {{ .Release.Name | quote }}
+        - name: RELEASE_NAMESPACE
+          value: {{ .Release.Namespace | quote }}
+{{- end }}

@@ -3,14 +3,15 @@ import { derived, writable } from "svelte/store";
 export type ThemeOption = {
   name: string;
   icon: string;
+  tooltip: string;
 };
 
 export const availableThemes: ThemeOption[] = [
-  { name: "light", icon: "fa-sun", tooltip: "Switch to Light Theme" },
-  { name: "dark", icon: "fa-moon", tooltip: "Switch to Dark Theme" },
-  { name: "emerald", icon: "fa-leaf", tooltip: "Switch to Emerald Theme" },
-  { name: "forest", icon: "fa-tree", tooltip: "Switch to Forest Theme" },
-  { name: "autumn", icon: "fa-cloud-sun", tooltip: "Switch to Autumn Theme" },
+  { name: "light", icon: "fa-sun", tooltip: "Light" },
+  { name: "dark", icon: "fa-moon", tooltip: "Dark" },
+  { name: "emerald", icon: "fa-leaf", tooltip: "Emerald" },
+  { name: "forest", icon: "fa-tree", tooltip: "Forest" },
+  { name: "autumn", icon: "fa-cloud-sun", tooltip: "Autumn" },
 ];
 
 const initialThemeName =

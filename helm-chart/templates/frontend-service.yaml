@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ .Release.Name }}-mongodhara
+  name: {{ .Release.Name }}-web
   labels:
     {{- include "mongodhara.frontend.labels" . | nindent 4 }}
   {{- with .Values.frontend.service.annotations }}

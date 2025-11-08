@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-mongodhara
+  name: {{ .Release.Name }}-web
   labels:
     {{- include "mongodhara.frontend.labels" . | nindent 4 }}
 spec:
@@ -21,7 +21,7 @@ spec:
       labels:
         {{- include "mongodhara.frontend.selectorLabels" . | nindent 8 }}
     spec:
-      {{- with .Values.frontend.imagePullSecrets }}
+      {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -38,13 +38,17 @@ spec:
             - name: http
               containerPort: {{ .Values.frontend.service.targetPort }}
               protocol: TCP
-          {{- if .Values.frontend.env }}
           env:
+            # Runtime configuration (injected at container startup)
+            - name: PUBLIC_AUTHZ_ENABLED
+              value: {{ .Values.global.features.authz.enabled | quote }}
+            {{- if .Values.frontend.env }}
             {{- range .Values.frontend.env }}
+            # Additional environment variables from frontend.env
             - name: {{ .name }}
               value: {{ .value | quote }}
             {{- end }}
-          {{- end }}
+            {{- end }}
           {{- with .Values.frontend.envFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}

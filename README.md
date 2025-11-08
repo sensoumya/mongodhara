@@ -11,160 +11,219 @@
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-Ready-326CE5.svg)](https://kubernetes.io/)
 
----
-
 _MongoDB management made elegant, fast, and intuitive._
 
-**MongoDhārā** is a blazing-fast web UI for MongoDB — built with Svelte & FastAPI.  
+**mongoDhārā** is a blazing-fast web UI for MongoDB — built with Svelte & FastAPI.  
 Manage databases, collections, documents, and GridFS visually with zero overhead.
-
----
-
-![Demo](./media/demo.gif)
 
 ---
 
 ## 📖 Table of Contents
 
+- [💡 Why mongoDhārā?](#-why-mongodhārā)
 - [✨ Key Features](#-key-features)
 - [🚀 Quick Start](#-quick-start)
-- [📦 Helm Chart Deployment](#-helm-chart-deployment)
-- [🐳 Docker Setup](#-docker-setup)
 - [🧑‍💻 Local Development](#-local-development)
-- [📁 Project Structure](#-project-structure)
-- [🔧 Environment Variables](#-environment-variables)
+- [� Docker Images](#-docker-images)
+- [🔧 Configuration](#-configuration)
+- [🛡️ Security](#️-security)
 - [🤝 Contributing](#-contributing)
 - [⚖️ Legal Notice](#️-legal-notice)
 - [📄 License](#-license)
 
 ---
 
-## 💡 Why MongoDhārā?
+## 💡 Why mongoDhārā?
 
-- Near-raw MongoDB performance with minimal overhead
-- Clean, modern UI for effortless data exploration
-- Full control: databases, collections, documents, GridFS, and bulk operations
-- Scalable deployment with Kubernetes and Helm support
-- Open-source and developer-friendly
+**mongoDhārā** bridges the gap between raw MongoDB power and intuitive usability — without compromise.
+
+### At a Glance
+
+| Feature                    | **mongoDhārā**                                                  | **Typical Web-Based Tools (e.g., Mongo Express)** |
+| :------------------------- | :-------------------------------------------------------------- | :------------------------------------------------ |
+| **Performance**            | ✅ Near-native MongoDB driver with optimized async I/O          | ⚠️ Varies; often less efficient                   |
+| **GridFS Support**         | ✅ Full streaming read/write with chunking.                     | ⚠️ Limited to small file uploads                  |
+| **Query Builder**          | ✅ Context-aware autocomplete for operators, fields, and values | ⚠️ Basic JSON/text input                          |
+| **Enterprise Security**    | ✅ AES-GCM encrypted resource IDs and granular RBAC             | ⚠️ Minimal access control, exposed ObjectIDs      |
+| **Authentication**         | ✅ OAuth2/OIDC proxy integration and custom providers           | ⚠️ Basic HTTP authentication, DIY OAuth           |
+| **Audit Logging**          | ✅ Built-in audit trails with TTL-based retention               | ❌ Rarely available or externalized               |
+| **Kubernetes Integration** | ✅ Production-ready Helm charts with autoscaling (HPA)          | ⚠️ Basic container images, manual setup           |
+| **User Interface**         | ✅ Modern Svelte-based UI, responsive with dark mode            | ⚠️ Often legacy or inconsistent                   |
+
+### Core Strengths
+
+- **Blazing Fast**: Near-native MongoDB performance with direct driver access — no abstraction overhead
+- **Production-Ready Security**: Built-in RBAC, audit logging, and encrypted resource IDs for enterprise deployments
+- **Developer Experience**: Intelligent query builder with 50+ operator autocomplete, real-time field discovery, and smart templates
+- **Kubernetes-Native**: Helm charts with autoscaling, health checks, and production-grade configurations
+- **Zero Lock-in**: Open-source MIT license, standard MongoDB wire protocol, deploy anywhere
 
 ---
 
-## ✨ Key Features
+## ✨ **Key Features**
 
-### ⚡ High-Performance UI
-- PyMongo-powered queries with fast pagination and filtering
-- Responsive design with light/dark mode
-- Real-time updates and notifications
+### 🔐 **Security & Enterprise Features**
+
+- **RBAC Authorization**: Role-based access control with granular per-database permissions
+- **Opaque IDs**: AES-GCM encrypted resource identifiers to prevent enumeration attacks
+- **Audit Logging**: Comprehensive audit trail of all operations stored in MongoDB
+- **Configurable Authentication**: Support for various OAuth proxies and authentication systems
+- **System Database Protection**: Built-in safeguards against accidental system database modifications
+
+### ⚡ **High-Performance UI**
+
+- Near-native MongoDB speed with minimal overhead
+- Optimized queries with fast pagination and filtering
+- Responsive layout with light/dark theme support
+- Real-time status updates and notifications
 - Intuitive navigation with breadcrumbs and global search
 
-### 🗂️ Database & Document Management
-- Create, rename, and delete databases/collections
+### 🗂️ **Database, Collection & Document Management**
+
+- Create, rename, and delete databases and collections
 - Browse, query, and edit documents with a rich JSON editor
-- Advanced filtering, sorting, and aggregation
-- Bulk import/export and large-scale operations
+- **Context-Aware Query Builder**: Streamlines query writing with helpful suggestions:
+  - **@ Operator Autocomplete**: Quickly inserts 50+ MongoDB operators (comparison, logical, array, geospatial) with convenient cursor placement
+  - **/ Field Name Autocomplete**: Suggests actual field names from your collections in real-time
+  - **# Value Helpers**: Provides quick access to common values (DateTime ranges, null, booleans, UUIDs, empty arrays/objects)
+  - **Smart Templates**: Inserts pre-defined query patterns with placeholders and cursor positioning
+  - **Real-time Validation**: Checks query syntax and structure as you type
+- Full CRUD support with bulk import/export of documents (JSON)
+- Run large-scale bulk operations with progress and error tracking
 - MongoDB-compliant naming and validation
 
-### 📁 GridFS File Storage
-- Upload, download, and manage files with GridFS
-- Multiple storage buckets
-- Metadata search
+### 📁 **GridFS File Storage**
 
-### 🧾 Rich JSON Editing
-- Syntax highlighting, auto-format, and real-time validation
-- Inline error detection and schema assistance
+- Upload, download, and manage files with GridFS
+- Search files by name or metadata
+- Create and manage multiple storage buckets
+
+### 🧾 **Rich JSON Editing**
+
+- Syntax-highlighted editor with real-time validation
+- Inline error detection and formatting
+- Auto-format and schema assistance
+- DateTime helpers for quick date range queries
 
 ---
 
 ## 🚀 Quick Start
 
+### Kubernetes/Helm Deployment
 
-For **local development**:
+The easiest way to deploy mongoDhārā is using the included Helm chart:
+
+```bash
+# Clone the repository
+git clone <your-repo-url>
+cd mongodhara
+
+# Deploy with custom MongoDB URI and images
+helm install mongodhara ./helm-chart \
+  --set backend.image.repository=mongodhara/backend \
+  --set backend.image.tag=1.0.0 \
+  --set frontend.image.repository=mongodhara/frontend \
+  --set frontend.image.tag=1.0.0 \
+  --set backend.env[0].value="mongodb://your-mongo-host:27017/yourdb"
+```
+
+> 💡 **For production deployments and advanced configuration options, see the [Helm Chart README](helm-chart/README.md).**
+
+---
+
+## 🐳 Docker Images
+
+Build and push Docker images:
 
 ```bash
 # Backend
+docker build -f dockerfiles/backend.Dockerfile -t your-registry.com/mongodhara/backend:1.0.0 .
+docker push your-registry.com/mongodhara/backend:1.0.0
+
+# Frontend
+docker build -f dockerfiles/frontend.Dockerfile -t your-registry.com/mongodhara/frontend:1.0.0 .
+docker push your-registry.com/mongodhara/frontend:1.0.0
+```
+
+---
+
+## 🧑‍💻 Local Development
+
+### Prerequisites
+
+- Python 3.9+
+- Node.js 16+
+- MongoDB server running locally
+
+### Setup Backend
+
+```bash
 cd backend
 python -m venv venv
-source venv/bin/activate
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-
-# Frontend
-cd frontend
-npm install
-npm run dev
+python app/main.py  # Development server with auto-reload
 ```
 
-Access frontend at [http://localhost:5173/mdhara](http://localhost:5173/mdhara).
-
----
-
-## 🐳 Docker Setup
+### Setup Frontend
 
 ```bash
-# Backend
-docker build -t mongodhara/backend:latest ./backend
-docker run -p 8000:8000 mongodhara/backend:latest
-
-# Frontend
-docker build -t mongodhara/frontend:latest ./frontend
-docker run -p 5173:5173 mongodhara/frontend:latest
-```
----
-## ☸️ Helm Chart Deployment
-
-Deploy MongoDhārā on a Kubernetes cluster using the included Helm chart.  
-
-For full instructions, configuration options, and advanced deployment examples, please see the dedicated Helm chart README:
-
-[📖 View Helm Chart README](./helm-chart/README.md)
-
----
-
-## 📁 Project Structure
-
-```plaintext
-mongodhara/
-├── backend/               # FastAPI backend source code
-├── frontend/              # Svelte frontend source code
-├── helm-chart/            # Kubernetes Helm chart
-├── media/                 # Logo, demo GIFs
-├── README.md              # Main README
-└── LICENSE                # License
+cd frontend
+npm install
+npm run dev  # Opens at http://localhost:5173
 ```
 
 ---
 
-## 🔧 Environment Variables
+## 🔧 Configuration
 
-| Variable              | Description                       | Default                     |
-| --------------------- | --------------------------------- | --------------------------- |
-| `MONGO_URI`           | MongoDB connection string         | `mongodb://localhost:27017` |
-| `REMOTE_API_BASE_URL` | Backend API base URL for frontend | `http://localhost:8000`     |
+**Detailed configuration guides:**
+
+- **[Helm Chart](helm-chart/README.md)**: Kubernetes deployment, security features, scaling
+- **[Backend](backend/README.md)**: Environment variables, RBAC, opaque IDs, audit logging
+
+---
+
+## 🛡️ Security
+
+### Production Security Checklist
+
+- ✅ Use TLS/HTTPS with valid certificates (Ingress + cert-manager)
+- ✅ Enable `ENABLE_AUTHZ=true` and configure user permissions
+- ✅ Enable `ENABLE_OPAQUE_IDS=true` to prevent resource enumeration
+- ✅ Configure OAuth proxy at ingress level (oauth2-proxy, Authelia, etc.)
+- ✅ Enable `global.features.auditLogging.enabled=true` for compliance tracking
+- ✅ Use network policies to restrict pod-to-pod communication
+- ✅ Configure strong MongoDB authentication and encryption in transit
+- ✅ Set appropriate resource limits and enable HPA for scaling
+- ✅ Regularly review audit logs and monitor for anomalies
+
+**Built-in protections:** RBAC with per-database permissions, AES-GCM encrypted resource IDs, system database write blocks (`admin`, `local`, `config`, `mongodhara`), TTL-based audit retention (365 days)
 
 ---
 
 ## 🤝 Contributing
 
-Contributions, issues, and feature requests are welcome!
+Contributions welcome! Please:
 
-1. Fork the repository  
-2. Create your branch (`git checkout -b feature/your-feature`)  
-3. Commit your changes (`git commit -m 'Add some feature'`)  
-4. Push to the branch (`git push origin feature/your-feature`)  
-5. Open a Pull Request  
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit with clear messages (`git commit -m 'Add amazing feature'`)
+4. Push and open a Pull Request
 
 ---
 
 ## ⚖️ Legal Notice
 
-This project is **not affiliated with, endorsed by, or sponsored by MongoDB, Inc.**  
-**MongoDB®** is a registered trademark of **MongoDB, Inc.**  
+This project is **not affiliated with, endorsed by, or sponsored by MongoDB, Inc.**
+
+**MongoDB®** is a registered trademark of **MongoDB, Inc.** All product names, logos, and brands are property of their respective owners. Use of these names, trademarks, and brands does not imply endorsement.
 
 ---
 
 ## 📄 License
 
-This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 

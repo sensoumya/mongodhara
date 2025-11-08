@@ -4,7 +4,8 @@
   import Breadcrumb from "$lib/components/Breadcrumb.svelte";
   import JsonEditor from "$lib/components/JsonEditor.svelte";
   import Modal from "$lib/components/Modal.svelte";
-  import SearchAndPagination from "$lib/components/SearchAndPagination.svelte";
+  import MongoQueryInput from "$lib/components/MongoQueryInput.svelte";
+  import Pagination from "$lib/components/Pagination.svelte";
   import * as api from "$lib/stores/api";
   import { addNotification } from "$lib/stores/notifications";
   import type { PaginatedDocuments } from "$lib/stores/types";
@@ -21,6 +22,10 @@
 
   // For backward compatibility, maintain collection variable
   $: collection = item;
+
+  // Display names for breadcrumb (populated from API responses)
+  let dbDisplayName = "";
+  let itemDisplayName = "";
 
   // State for documents and pagination
   let documentsResponse: PaginatedDocuments = {
@@ -56,19 +61,26 @@
   let downloadingFileId: string | null = null;
   let isCreatingDocument = false;
   let isImportingFile = false;
+  let jsonEditor: JsonEditor; // Reference to JsonEditor component
 
-  // New state variables for the JSON editor sidebar and query popup
+  // New state variables for the JSON editor sidebar
   let showEditorSidebar = false;
   let documentToEdit: any | null = null;
-  let isQueryMaximized = false; // New state variable for in-place expansion
-  let validationError: string | null = null;
 
   // State for search/query, pagination, and sorting
   let queryTerm: string = "";
   let currentPage: number = 1;
-  const pageSize: number = 12;
+  let pageSize: number =
+    typeof window !== "undefined"
+      ? parseInt(localStorage.getItem("pageSize_documents") || "14")
+      : 14;
   // Total number of pages for the pagination dropdown
   $: totalPages = Math.ceil(documentsResponse.total / pageSize);
+
+  // Save pageSize to localStorage whenever it changes
+  $: if (typeof window !== "undefined") {
+    localStorage.setItem("pageSize_documents", pageSize.toString());
+  }
 
   // New state variables for sorting, initialized to null so they are not sent by default
   let sortField: string | null = null;
@@ -108,6 +120,30 @@
       return str.substring(0, maxLen) + "...";
     }
     return str;
+  }
+
+  /**
+   * Checks if a document should be protected from deletion
+   */
+  function isProtectedDocument(
+    dbName: string,
+    collectionName: string
+  ): boolean {
+    const systemDatabases = ["admin", "local", "config", "mongodhara"];
+    const systemCollections = [
+      "system.users",
+      "system.roles",
+      "system.version",
+      "system.namespaces",
+    ];
+
+    // Protect all documents in system databases
+    if (systemDatabases.includes(dbName)) {
+      return true;
+    }
+
+    // Protect documents in system collections
+    return systemCollections.includes(collectionName);
   }
 
   /**
@@ -156,55 +192,61 @@
     return ["_id", ...idKeys, ...nameKeys, ...otherKeys];
   }
 
-  // Reactive block to perform live validation of the JSON query
-  $: {
-    if (isQueryMaximized && queryTerm.trim() !== "") {
-      try {
-        JSON.parse(queryTerm);
-        validationError = null;
-      } catch (e: any) {
-        validationError = e.message;
-      }
-    } else {
-      validationError = null;
-    }
-  }
+  // Debounce timeout for height synchronization
+  let syncTimeout: number;
 
-  // Reactive block to synchronize row heights
-  $: {
-    // Only run if both table bodies exist and documents are loaded
-    if (mainTableBody && actionTableBody && documentsResponse.docs.length > 0) {
+  /**
+   * Synchronizes the heights of action table rows with main table rows
+   * Uses a more robust approach that handles dynamic content and zoom changes
+   */
+  function synchronizeRowHeights() {
+    if (
+      !mainTableBody ||
+      !actionTableBody ||
+      documentsResponse.docs.length === 0
+    ) {
+      return;
+    }
+
+    // Clear any pending synchronization
+    if (syncTimeout) {
+      clearTimeout(syncTimeout);
+    }
+
+    // Debounce the synchronization to avoid excessive calls
+    syncTimeout = setTimeout(() => {
       requestAnimationFrame(() => {
         const mainRows = mainTableBody.querySelectorAll("tr");
         const actionRows = actionTableBody.querySelectorAll("tr");
 
         // Check if the number of rows matches to prevent errors
         if (mainRows.length !== actionRows.length) {
-          // This can happen if the DOM is still updating. We'll wait for the next frame.
+          // Try again after a short delay if DOM is still updating
+          setTimeout(() => synchronizeRowHeights(), 50);
           return;
         }
 
         mainRows.forEach((mainRow, index) => {
-          if (actionRows[index]) {
-            actionRows[index].style.height = `${mainRow.offsetHeight}px`;
+          const actionRow = actionRows[index];
+          if (actionRow) {
+            // Use getBoundingClientRect for more accurate height calculation
+            const mainHeight = mainRow.getBoundingClientRect().height;
+            actionRow.style.height = `${mainHeight}px`;
+            // Also set min-height to prevent content overflow issues
+            actionRow.style.minHeight = `${mainHeight}px`;
           }
         });
       });
-    }
+    }, 16); // ~60fps debounce
   }
 
-  /**
-   * Formats the JSON query string with indentation.
-   */
-  function handleBeautify() {
-    if (!validationError && queryTerm.trim() !== "") {
-      try {
-        const parsed = JSON.parse(queryTerm);
-        queryTerm = JSON.stringify(parsed, null, 2);
-      } catch (e) {
-        // Validation error is already handled by the reactive block
-      }
-    }
+  // Reactive block to trigger height synchronization when data changes
+  $: if (
+    mainTableBody &&
+    actionTableBody &&
+    documentsResponse.docs.length > 0
+  ) {
+    synchronizeRowHeights();
   }
 
   /**
@@ -240,6 +282,8 @@
     } finally {
       loading = false;
       isTableLoading = false;
+      // Synchronize row heights after loading is complete
+      synchronizeRowHeights();
     }
   }
 
@@ -283,6 +327,14 @@
       );
 
       if (response && response.data) {
+        // Extract display names from API response
+        if (response.database?.name) {
+          dbDisplayName = response.database.name;
+        }
+        if (response.collection?.name) {
+          itemDisplayName = response.collection.name;
+        }
+
         documentsResponse = {
           docs: response.data,
           total: response.total,
@@ -328,6 +380,14 @@
         `/db/${db}/gridfs/${item}/files?${queryParams.toString()}`
       );
       if (response && response.data) {
+        // Extract display names from API response
+        if (response.database?.name) {
+          dbDisplayName = response.database.name;
+        }
+        if (response.bucket?.bucket_name) {
+          itemDisplayName = response.bucket.bucket_name;
+        }
+
         documentsResponse = {
           docs: response.data,
           total: response.total || response.data.length,
@@ -400,12 +460,13 @@
           "success"
         );
       }
+      // Close modal immediately after successful delete
+      showDeleteModal = false;
+      docToDelete = null;
+      // Refresh data after modal is closed
       await fetchData();
     } catch (e) {
       addNotification(e.message, "error");
-    } finally {
-      showDeleteModal = false;
-      docToDelete = null;
     }
   }
 
@@ -575,7 +636,7 @@
   }
 
   /**
-   * Handles page change events from SearchAndPagination component.
+   * Handles page change events from Pagination component.
    */
   function handlePageChange(event: CustomEvent<{ page: number }>) {
     currentPage = event.detail.page;
@@ -583,7 +644,7 @@
   }
 
   /**
-   * Handles search events from SearchAndPagination component.
+   * Handles search events.
    */
   function handleSearch(event: CustomEvent<{ term: string }>) {
     queryTerm = event.detail.term;
@@ -597,6 +658,44 @@
   function handleQuerySubmit() {
     currentPage = 1;
     fetchData();
+  }
+
+  /**
+   * Handles refetching data and updating the editor with fresh document.
+   */
+  async function handleRefetch() {
+    if (!documentToEdit || !documentToEdit._id) {
+      handleQuerySubmit();
+      jsonEditor?.refetchComplete();
+      return;
+    }
+
+    const currentDocId = documentToEdit._id;
+
+    // Use isTableLoading instead of fetchData to avoid central spinner
+    isTableLoading = true;
+    try {
+      if (isCollection) {
+        await fetchDocuments();
+      } else if (isGridFS) {
+        await fetchGridFSFiles();
+      }
+    } catch (e) {
+      // Error handling is already done in fetchDocuments/fetchGridFSFiles
+    } finally {
+      isTableLoading = false;
+    }
+
+    // Find the updated document in the refreshed data and update the editor
+    const updatedDoc = documentsResponse.docs.find(
+      (doc: any) => doc._id === currentDocId
+    );
+    if (updatedDoc) {
+      documentToEdit = updatedDoc;
+    }
+
+    // Notify the editor that refetch is complete
+    jsonEditor?.refetchComplete();
   }
 
   /**
@@ -669,6 +768,7 @@
       // Create FormData for multipart upload
       const formData = new FormData();
       formData.append("file", selectedFile);
+      formData.append("bucket_name", itemDisplayName);
 
       // Add metadata if provided
       if (uploadMetadata.trim()) {
@@ -688,7 +788,7 @@
 
       // Use API utility for upload
       const result = await api.apiUploadFile(
-        `/db/${db}/gridfs/${item}/upload`,
+        `/db/${db}/gridfs/upload`,
         formData
       );
       addNotification(
@@ -833,14 +933,31 @@
 
       showEditorSidebar = false;
       await fetchData();
+      jsonEditor?.saveComplete();
     } catch (e) {
       addNotification(e.message, "error");
+      jsonEditor?.saveFailed();
     }
   }
 
   // Initial data fetch on component mount
   onMount(() => {
     fetchData(true);
+
+    // Add resize event listener for height synchronization on zoom/resize
+    const handleResize = () => {
+      synchronizeRowHeights();
+    };
+
+    window.addEventListener("resize", handleResize);
+
+    // Return cleanup function for onDestroy
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      if (syncTimeout) {
+        clearTimeout(syncTimeout);
+      }
+    };
   });
 </script>
 
@@ -855,221 +972,140 @@
 </svelte:head>
 
 <div
-  class="h-[calc(100vh-90px)] flex flex-col p-2 md:p-4 text-base-content"
-  in:fade={{ duration: 200 }}
-  out:fade={{ duration: 200 }}
+  class="h-[calc(100vh-90px)] flex flex-col px-2 pb-2 bg-base-100 text-base-content"
 >
   <div class="max-w-7xl mx-auto w-full h-full flex flex-col">
-    <div>
-      <h1 class="text-3xl poppins mb-3 mt-3 text-center">
+    <div class="mb-2">
+      <h1
+        class="text-2xl poppins mb-8 text-center flex items-center justify-center gap-4"
+      >
         {#if isCollection}
-          <i class="fas fa-file-alt text-primary"></i>
-          Documents
+          <span class="flex items-center gap-2">
+            <i class="fas fa-file-alt text-primary"></i>
+            <span>Documents</span>
+          </span>
         {:else if isGridFS}
-          <i class="fas fa-folder-open text-primary"></i>
-          GridFS Files
+          <span class="flex items-center gap-2">
+            <i class="fas fa-folder-open text-primary"></i>
+            <span>GridFS Files</span>
+          </span>
         {/if}
       </h1>
-      <Breadcrumb
-        showBackButton={true}
-        segments={[
-          { name: "Home", isHome: true, href: `${base}/` },
-          {
-            name: db,
-            href: `../${db}?type=${itemType}`,
-            label: "Database",
-          },
-          { name: item, label: isCollection ? "Collection" : "GridFS Bucket" },
-        ]}
-      />
+
+      <!-- Breadcrumb and Controls Row -->
       <div
-        class="flex flex-col md:flex-row justify-between items-center mb-4 space-y-2 md:space-y-0"
+        class="flex flex-col md:flex-row md:items-center justify-between mb-2 gap-2"
       >
-        <div class="relative w-full md:w-1/3 query-container">
-          <form on:submit|preventDefault={handleQuerySubmit} class="relative">
-            <!-- Collapsed state -->
-            <label
-              class="input input-bordered input-secondary flex items-center gap-2 w-full"
-              class:hidden={isQueryMaximized}
-            >
-              <input
-                type="text"
-                class="grow"
-                bind:value={queryTerm}
-                placeholder="Enter JSON query..."
-              />
-              <button
-                type="submit"
-                class="btn btn-sm btn-ghost"
-                aria-label="Search"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 16 16"
-                  fill="currentColor"
-                  class="h-4 w-4 opacity-70"
-                  ><path
-                    fill-rule="evenodd"
-                    d="M9.965 11.026a5 5 0 1 1 1.06-1.06l2.094 2.093a.75.75 0 0 1-1.06 1.06l-2.094-2.094ZM10.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z"
-                    clip-rule="evenodd"
-                  /></svg
-                >
-              </button>
-              <button
-                type="button"
-                on:click={() => (isQueryMaximized = true)}
-                class="btn btn-sm btn-ghost"
-                aria-label="Expand query input"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-4 w-4"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path
-                    d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"
-                  />
-                </svg>
-              </button>
-            </label>
-
-            <!-- Expanded state -->
-            <div
-              class="query-expanded-overlay absolute top-0 left-0 w-full bg-base-100 rounded-lg shadow-xl z-50 border-2 border-secondary transition-all duration-300 ease-in-out"
-              class:scale-y-0={!isQueryMaximized}
-              class:opacity-0={!isQueryMaximized}
-              class:scale-y-100={isQueryMaximized}
-              class:opacity-100={isQueryMaximized}
-              style="transform-origin: top left;"
-              on:click|stopPropagation
-            >
-              <div class="relative p-4">
-                <!-- Moved buttons to top-right -->
-                <div
-                  class="absolute top-4 right-4 flex items-center gap-2 z-10"
-                >
-                  <button
-                    type="button"
-                    on:click={handleBeautify}
-                    class="btn btn-sm btn-base-100"
-                    disabled={!!validationError}
-                    aria-label="Beautify JSON"
-                  >
-                    <i class="fas fa-wand-magic-sparkles"></i>
-                  </button>
-                  <button
-                    type="submit"
-                    class="btn btn-sm btn-base-100"
-                    disabled={!!validationError}
-                    aria-label="Search"
-                  >
-                    <i class="fas fa-search"></i>
-                  </button>
-                  <button
-                    type="button"
-                    on:click={() => (isQueryMaximized = false)}
-                    class="btn btn-sm btn-base-100"
-                    aria-label="Compress query input"
-                  >
-                    <i class="fas fa-compress"></i>
-                  </button>
-                </div>
-
-                <textarea
-                  bind:value={queryTerm}
-                  class="textarea w-full h-96 font-mono text-sm resize-none border-none focus:outline-none bg-transparent pr-40"
-                  placeholder="Enter JSON query..."
-                ></textarea>
-                {#if validationError}
-                  <div class="text-sm text-error mt-2">
-                    Error: {validationError}
-                  </div>
-                {/if}
-              </div>
-            </div>
-          </form>
-
-          <!-- Backdrop for click-outside-to-close -->
-          <div
-            class="fixed inset-0 z-40 bg-transparent transition-opacity duration-300 ease-in-out"
-            class:opacity-0={!isQueryMaximized}
-            class:opacity-100={isQueryMaximized}
-            class:pointer-events-none={!isQueryMaximized}
-            on:click={() => (isQueryMaximized = false)}
-          ></div>
+        <div class="flex-1">
+          <Breadcrumb
+            showBackButton={true}
+            segments={[
+              { name: "Home", isHome: true, href: `${base}/` },
+              {
+                name: dbDisplayName,
+                href: `../${db}?type=${itemType}`,
+                label: "Database",
+                loading: loading && !dbDisplayName,
+              },
+              {
+                name: itemDisplayName,
+                label: isCollection ? "Collection" : "GridFS Bucket",
+                loading: loading && !itemDisplayName,
+              },
+            ]}
+          />
         </div>
-        {#if isGridFS}
-          <button
-            on:click={handleUploadClick}
-            class="btn btn-secondary px-4 py-3 rounded-md transition-colors duration-300 tooltip"
-            data-tip="Upload file"
-            aria-label="Upload file"
-          >
-            <i class="fas fa-arrow-up-from-bracket mr-0"></i>
-          </button>
-        {:else}
-          <!-- Collections dropdown -->
-          <div
-            class="dropdown dropdown-end dropdown-hover"
-            class:hidden={showEditorSidebar}
-          >
-            <div
-              tabindex="0"
-              role="button"
-              class="btn btn-secondary px-4 py-3 rounded-md transition-colors duration-300 tooltip"
-              data-tip="Add to collection"
-            >
-              <i class="fas fa-plus mr-0"></i>
-            </div>
-            <ul
-              tabindex="0"
-              class="dropdown-content menu bg-base-100 rounded-box z-[1] w-60 p-2 shadow-xl border border-base-300"
-            >
-              <li>
+        <div class="flex items-center gap-2">
+          <MongoQueryInput
+            bind:value={queryTerm}
+            availableFields={allKeys}
+            disabled={loading || isTableLoading}
+            on:submit={handleQuerySubmit}
+          />
+
+          {#if isGridFS}
+            {#if !isProtectedDocument(dbDisplayName, itemDisplayName)}
+              <div
+                class="flex items-center gap-0.5"
+                class:opacity-0={showEditorSidebar}
+                class:pointer-events-none={showEditorSidebar}
+              >
                 <button
-                  on:click={handleNewDocumentClick}
-                  class="flex items-center gap-3 py-3 px-3 hover:bg-base-200 hover:text-primary rounded-lg transition-colors"
-                  disabled={isCreatingDocument}
+                  on:click={handleUploadClick}
+                  class="btn btn-secondary btn-sm flex items-center px-2"
+                  aria-label="Upload file"
                 >
-                  {#if isCreatingDocument}
-                    <span class="loading loading-spinner loading-xs"></span>
-                    Opening Editor...
-                  {:else}
-                    <i class="fa-solid fa-file-circle-plus"></i>
-                    <span>Insert a document</span>
-                  {/if}
+                  <i class="fas fa-arrow-up-from-bracket"></i>
+                  <span class="hidden md:inline">Upload</span>
                 </button>
-              </li>
-              <li>
-                <button
-                  on:click={handleImportClick}
-                  class="flex items-center gap-3 py-3 px-3 hover:bg-base-200 hover:text-primary rounded-lg transition-colors"
-                  disabled={isImportingFile}
+              </div>
+            {/if}
+          {:else}
+            <!-- Collections dropdown -->
+            {#if !isProtectedDocument(dbDisplayName, itemDisplayName)}
+              <div
+                class="dropdown dropdown-end dropdown-hover"
+                class:opacity-0={showEditorSidebar}
+                class:pointer-events-none={showEditorSidebar}
+              >
+                <div
+                  tabindex="0"
+                  role="button"
+                  class="btn btn-secondary btn-sm flex items-center gap-1"
                 >
-                  {#if isImportingFile}
-                    <span class="loading loading-spinner loading-xs"></span>
-                    Opening Import...
-                  {:else}
-                    <i class="fa-solid fa-arrow-up-from-bracket"></i>
-                    <span>Import a JSON file</span>
-                  {/if}
-                </button>
-              </li>
-            </ul>
-          </div>
-        {/if}
+                  <i class="fas fa-plus"></i>
+                  <span class="hidden md:inline">Add</span>
+                </div>
+                <ul
+                  tabindex="0"
+                  class="dropdown-content menu bg-base-100 rounded-box z-[1] w-60 p-2 shadow-xl border border-base-300"
+                >
+                  <li>
+                    <button
+                      on:click={handleNewDocumentClick}
+                      class="flex items-center gap-3 py-3 px-3 hover:bg-base-200 hover:text-primary rounded-lg transition-colors"
+                      disabled={isCreatingDocument}
+                    >
+                      {#if isCreatingDocument}
+                        <span class="loading loading-ring loading-xs"></span>
+                        Opening Editor...
+                      {:else}
+                        <i class="fa-solid fa-file-circle-plus"></i>
+                        <span>Insert a document</span>
+                      {/if}
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      on:click={handleImportClick}
+                      class="flex items-center gap-3 py-3 px-3 hover:bg-base-200 hover:text-primary rounded-lg transition-colors"
+                      disabled={isImportingFile}
+                    >
+                      {#if isImportingFile}
+                        <span class="loading loading-ring loading-xs"></span>
+                        Opening Import...
+                      {:else}
+                        <i class="fa-solid fa-arrow-up-from-bracket"></i>
+                        <span>Import a JSON file</span>
+                      {/if}
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            {/if}
+          {/if}
+        </div>
       </div>
     </div>
 
+    <!-- Separator line -->
+    <div class="border-t border-base-content/10 mb-3"></div>
+
+    <!-- Main Content Area -->
     <div
-      class="flex-grow overflow-y-auto table-container rounded-box relative shadow-2xl"
+      class="flex-grow overflow-y-auto mb-4 table-container rounded-box relative shadow-2xl"
     >
-      {#if loading}
+      {#if loading && !showEditorSidebar}
         <div
           class="flex flex-col items-center justify-center h-full absolute inset-0 bg-base-100"
           in:fade={{ duration: 400 }}
@@ -1082,7 +1118,18 @@
             style="width: 80px; height: 80px;"
           ></span>
         </div>
-      {:else if error}
+      {/if}
+
+      {#if isTableLoading && !showEditorSidebar}
+        <div class="loading-overlay loading-overlay-table">
+          <span
+            class="loading loading-ring text-primary"
+            style="width: 80px; height: 80px;"
+          ></span>
+        </div>
+      {/if}
+
+      {#if error}
         <div
           class="text-center text-secondary/40 h-full flex flex-col justify-center"
         >
@@ -1090,12 +1137,12 @@
         </div>
       {:else if documentsResponse.docs.length === 0}
         <div
-          class="text-center text-secondary/40 h-full flex flex-col justify-center"
+          class="text-center text-secondary/60 h-full flex flex-col justify-center"
         >
           <p class="text-2xl font-semibold poppins">No content available</p>
         </div>
       {:else}
-        <div class="flex relative">
+        <div class="flex relative rounded-box">
           <div
             class="overflow-x-auto flex-grow transition-opacity duration-300"
             class:opacity-50={isTableLoading}
@@ -1184,7 +1231,8 @@
                     <td class="text-center no-padding-table-cell">
                       <div
                         class="dropdown dropdown-end dropdown-hover"
-                        class:hidden={showEditorSidebar}
+                        class:opacity-0={showEditorSidebar}
+                        class:pointer-events-none={showEditorSidebar}
                       >
                         <div
                           tabindex="0"
@@ -1208,8 +1256,7 @@
                                   viewingFileId === doc._id}
                               >
                                 {#if isViewingFile && viewingFileId === doc._id}
-                                  <span
-                                    class="loading loading-spinner loading-xs"
+                                  <span class="loading loading-ring loading-xs"
                                   ></span>
                                   Loading...
                                 {:else}
@@ -1228,8 +1275,7 @@
                                   downloadingFileId === doc._id}
                               >
                                 {#if isDownloading && downloadingFileId === doc._id}
-                                  <span
-                                    class="loading loading-spinner loading-xs"
+                                  <span class="loading loading-ring loading-xs"
                                   ></span>
                                   Downloading...
                                 {:else}
@@ -1242,7 +1288,16 @@
                           <li>
                             <button
                               on:click={() => handleDeleteClick(doc)}
-                              class="flex items-center gap-2 text-sm hover:bg-base-200 hover:text-error"
+                              class="flex items-center gap-2 text-sm {isProtectedDocument(
+                                dbDisplayName,
+                                itemDisplayName
+                              )
+                                ? 'text-base-content/30 cursor-not-allowed opacity-50'
+                                : 'hover:bg-base-200 hover:text-error'}"
+                              disabled={isProtectedDocument(
+                                dbDisplayName,
+                                itemDisplayName
+                              )}
                             >
                               <i class="fas fa-trash-alt"></i>
                               Delete {isGridFS ? "File" : "Document"}
@@ -1256,141 +1311,117 @@
               </tbody>
             </table>
           </div>
-
-          {#if isTableLoading}
-            <div class="loading-overlay loading-overlay-table">
-              <span
-                class="loading loading-ring text-primary"
-                style="width: 80px; height: 80px;"
-              ></span>
-            </div>
-          {/if}
         </div>
       {/if}
     </div>
 
-    <div class="mt-4">
-      <div
-        class="flex flex-col md:flex-row justify-between items-center space-y-2 md:space-y-0"
-      >
-        <div class="text-sm text-accent">
-          Displaying {documentsResponse.docs.length === documentsResponse.total
-            ? "all"
-            : `${(currentPage - 1) * pageSize + 1} - ${Math.min(currentPage * pageSize, documentsResponse.total)}`}
-          of {documentsResponse.total}
-          {isGridFS ? "files" : "documents"}
-        </div>
-
-        <SearchAndPagination
-          {currentPage}
-          {totalPages}
-          loading={loading || isTableLoading}
-          showSearch={false}
-          showCreateButton={false}
-          on:pageChange={handlePageChange}
-        />
-      </div>
-    </div>
+    <!-- Pagination Controls -->
+    <Pagination
+      {currentPage}
+      {totalPages}
+      {pageSize}
+      loading={loading || isTableLoading}
+      showPageSize={true}
+      on:pageChange={handlePageChange}
+      on:pageSizeChange={(e) => {
+        pageSize = e.detail.pageSize;
+        currentPage = 1;
+        fetchData();
+      }}
+    />
   </div>
 </div>
 
 <JsonEditor
+  bind:this={jsonEditor}
   bind:isOpen={showEditorSidebar}
   bind:document={documentToEdit}
   readOnly={isGridFS}
+  showRefetch={documentToEdit && documentToEdit._id ? true : false}
   on:save={handleSave}
+  on:refetch={handleRefetch}
   onClose={() => (showEditorSidebar = false)}
 />
 
-{#if showDeleteModal}
-  <Modal
-    title="Confirm Deletion"
-    message={`Are you sure you want to delete the ${isGridFS ? "file" : "document"} with ID "${docToDelete}"? This action cannot be undone.`}
-    onConfirm={confirmDelete}
-    onCancel={cancelDelete}
-  />
-{/if}
+<Modal
+  title="Confirm Deletion"
+  message={`Are you sure you want to delete the ${isGridFS ? "file" : "document"} with ID "${docToDelete}"? This action cannot be undone.`}
+  onConfirm={confirmDelete}
+  onCancel={cancelDelete}
+  show={showDeleteModal}
+/>
 
-{#if showUploadModal}
-  <Modal
-    title="Upload File to GridFS"
-    message=""
-    onConfirm={handleFileUpload}
-    onCancel={cancelUpload}
-    confirmButtonText={isUploading ? "Uploading..." : "Upload"}
-    confirmDisabled={!selectedFile || isUploading}
-    validationMessage={!selectedFile ? "Please select a file to upload" : ""}
-  >
-    <div class="form-control w-full mb-4">
-      <label class="label">
-        <span class="label-text">Select File</span>
-      </label>
-      <input
-        type="file"
-        class="file-input file-input-bordered file-input-secondary w-full"
-        on:change={handleFileSelect}
-        disabled={isUploading}
-      />
-    </div>
+<Modal
+  title="Upload File to GridFS"
+  message=""
+  onConfirm={handleFileUpload}
+  onCancel={cancelUpload}
+  confirmButtonText={isUploading ? "Uploading..." : "Upload"}
+  confirmDisabled={!selectedFile || isUploading}
+  validationMessage={!selectedFile ? "Please select a file to upload" : ""}
+  show={showUploadModal}
+>
+  <div class="form-control w-full mb-4">
+    <label class="label">
+      <span class="label-text">Select File</span>
+    </label>
+    <input
+      type="file"
+      class="file-input file-input-bordered w-full"
+      on:change={handleFileSelect}
+      disabled={isUploading}
+    />
+  </div>
 
-    <div class="form-control w-full mb-6">
-      <label class="label">
-        <span class="label-text">Metadata (JSON)</span>
-      </label>
-      <textarea
-        class="textarea textarea-bordered w-full h-24 input-secondary"
-        bind:value={uploadMetadata}
-        placeholder={'{"key": "value"}'}
-        disabled={isUploading}
-      ></textarea>
-    </div>
-  </Modal>
-{/if}
+  <div class="form-control w-full mb-6">
+    <label class="label">
+      <span class="label-text">Metadata (JSON)</span>
+    </label>
+    <textarea
+      class="textarea textarea-bordered w-full h-24"
+      bind:value={uploadMetadata}
+      placeholder={'{"key": "value"}'}
+      disabled={isUploading}
+    ></textarea>
+  </div>
+</Modal>
 
-{#if showImportModal}
-  <Modal
-    title="Import JSON File to Collection"
-    message=""
-    onConfirm={handleFileImport}
-    onCancel={cancelImport}
-    confirmButtonText={isImporting ? "Importing..." : "Import"}
-    confirmDisabled={!selectedImportFile || isImporting}
-    validationMessage={!selectedImportFile
-      ? "Please select a JSON file to import"
-      : ""}
-  >
-    <div class="form-control w-full mb-4">
-      <label class="label">
-        <span class="label-text">Select JSON File</span>
-      </label>
-      <input
-        type="file"
-        accept=".json"
-        class="file-input file-input-bordered file-input-secondary w-full"
-        on:change={handleImportFileSelect}
-        disabled={isImporting}
-      />
-    </div>
+<Modal
+  title="Import JSON File to Collection"
+  message=""
+  onConfirm={handleFileImport}
+  onCancel={cancelImport}
+  confirmButtonText={isImporting ? "Importing..." : "Import"}
+  confirmDisabled={!selectedImportFile || isImporting}
+  validationMessage={!selectedImportFile
+    ? "Please select a JSON file to import"
+    : ""}
+  show={showImportModal}
+>
+  <div class="form-control w-full mb-4">
+    <label class="label">
+      <span class="label-text">Select JSON File</span>
+    </label>
+    <input
+      type="file"
+      accept=".json"
+      class="file-input file-input-bordered w-full"
+      on:change={handleImportFileSelect}
+      disabled={isImporting}
+    />
+  </div>
 
-    <div class="form-control w-full mb-6">
-      <label class="label">
-        <span class="label-text">Description</span>
-      </label>
-      <p class="text-sm text-base-content/70">
-        This will import documents from the JSON file into the collection. The
-        file should contain either a single JSON object or an array of JSON
-        objects.
-      </p>
-    </div>
-
-    {#if isImporting}
-      <div class="flex items-center gap-2 text-sm text-base-content/70 mb-4">
-        <span class="loading loading-spinner loading-sm"></span>
-        <span>Importing file...</span>
-      </div>
-    {/if}
-  </Modal>
-{/if}
+  <div class="form-control w-full mb-6">
+    <label class="label">
+      <span class="label-text">Description</span>
+    </label>
+    <p class="text-sm text-base-content/70">
+      This will import documents from the JSON file into the collection. The
+      file should contain either a single JSON object or an array of JSON
+      objects.
+    </p>
+  </div>
+</Modal>
 
 <style>
   /* Keyframes for the pulsing animation */
@@ -1435,25 +1466,14 @@
     align-items: center;
     justify-content: center;
     background-color: var(--fallback-b2, oklch(var(--b2) / 0.7));
-    z-index: 20;
+    z-index: 70;
     transition: background-color 0.3s;
   }
 
   /* Add this for table loading overlay */
   .loading-overlay-table {
-    background-color: transparent !important;
+    background-color: rgba(var(--b1), 0.8) !important;
     pointer-events: none;
-  }
-
-  /* Query expanded overlay styling */
-  .query-expanded-overlay {
-    min-width: 400px;
-    max-width: 600px;
-    width: 100%;
-  }
-
-  .query-container {
-    position: relative;
   }
 
   /* Action dropdown styling */
