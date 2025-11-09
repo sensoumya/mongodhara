@@ -168,6 +168,8 @@ if __name__ == "__main__":
         host="0.0.0.0", 
         port=8000, 
         reload=True,
+        reload_dirs=["app"],
+        reload_excludes=["__pycache__", "*.pyc", "*.pyo"],
         log_level=log_level,
         log_config=log_config
     )

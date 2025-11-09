@@ -12,7 +12,7 @@
         "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
     },
     "devDependencies": {
-        "@sveltejs/kit": "^2.47.3",
+        "@sveltejs/kit": "^2.48.4",
         "@sveltejs/vite-plugin-svelte": "^6.0.0",
         "autoprefixer": "^10.4.21",
         "daisyui": "^5.1.7",
@@ -34,6 +34,10 @@
         "@lezer/highlight": "^1.2.1",
         "@sveltejs/adapter-node": "^5.4.0",
         "@tailwindcss/vite": "^4.1.16",
-        "codemirror": "^6.0.2"
+        "codemirror": "^6.0.2",
+        "cookie": "^0.7.0"
+    },
+    "overrides": {
+        "cookie": "^0.7.0"
     }
 }
