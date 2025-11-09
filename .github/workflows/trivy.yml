@@ -31,7 +31,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy backend results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-backend-results.sarif'
@@ -59,7 +59,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy frontend results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-frontend-results.sarif'
@@ -90,7 +90,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy Backend results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-backend-results.sarif'
@@ -121,7 +121,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy Frontend results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-frontend-results.sarif'
@@ -149,7 +149,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy config results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-config-results.sarif'
@@ -177,7 +177,7 @@ jobs:
           severity: 'CRITICAL,HIGH,MEDIUM'
 
       - name: Upload Trivy Dockerfile results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-dockerfile-results.sarif'
