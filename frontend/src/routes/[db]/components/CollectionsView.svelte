@@ -1,22 +1,29 @@
 <script lang="ts">
+  import { browser } from "$app/environment";
   import { goto } from "$app/navigation";
   import { base } from "$app/paths";
   import Modal from "$lib/components/Modal.svelte";
+  import StatsPopover from "$lib/components/StatsPopover.svelte";
   import * as api from "$lib/stores/api";
-  import { formatCount } from "$lib/stores/format";
   import { addNotification } from "$lib/stores/notifications";
   import type { PaginatedCollections } from "$lib/stores/types";
+  import { onDestroy, onMount } from "svelte";
   import { fade } from "svelte/transition";
 
   export let db: string;
+  export let dbName: string = "";
   export let searchTerm: string = "";
   export let currentPage: number = 1;
   export let loading: boolean = false;
+  export let pageSize: number = 16;
+  export let isLoading: boolean = false;
   let error: boolean = false;
 
-  const pageSize: number = 16;
-
   export let collectionsResponse: PaginatedCollections = {
+    database: {
+      name: "",
+      opaque_id: "",
+    },
     collections: [],
     total: 0,
     page: 1,
@@ -26,14 +33,27 @@
   let exportingCol: string | null = null;
   let showDeleteModal = false;
   let colToDelete: string | null = null;
+  let colToDeleteName: string | null = null;
   let showCreateModal = false;
   let newCollectionName: string = "";
 
-  // Computed validation state for create collection
-  $: createCollectionValid = newCollectionName.trim() !== "";
-  $: collectionValidationMessage = !newCollectionName.trim()
-    ? "Please fill in Collection Name"
-    : "";
+  // Stats popover state
+  let showStatsPopover: string | null = null;
+  let statsData: any = null;
+  let statsLoading: boolean = false;
+  let statsCache: { [key: string]: any } = {};
+  let loadingStats: { [key: string]: boolean } = {};
+
+  // Copy functionality
+  let justCopied: string | null = null;
+
+  /**
+   * Checks if a database is a system database that should not be modified
+   */
+  function isSystemDatabase(dbName: string): boolean {
+    const systemDatabases = ["admin", "local", "config", "mongodhara"];
+    return systemDatabases.includes(dbName);
+  }
 
   export let totalPages = Math.ceil(collectionsResponse.total / pageSize);
   $: totalPages = Math.ceil(collectionsResponse.total / pageSize);
@@ -71,19 +91,52 @@
     };
   }
 
+  // Click outside handler to close stats popover
+  function handleClickOutside(event: MouseEvent) {
+    if (!showStatsPopover) return;
+
+    const target = event.target as HTMLElement;
+    // Check if the click is outside the stats popover
+    const popover = document.querySelector(".absolute.z-50");
+    if (popover && !popover.contains(target)) {
+      showStatsPopover = null;
+      statsData = null;
+      statsLoading = false;
+    }
+  }
+
+  onMount(() => {
+    if (browser) {
+      document.addEventListener("click", handleClickOutside);
+    }
+  });
+
+  onDestroy(() => {
+    if (browser) {
+      document.removeEventListener("click", handleClickOutside);
+    }
+  });
+
   /**
    * Navigates to the collection detail page.
-   * @param collectionName The name of the collection to navigate to.
+   * @param collection The collection object to navigate to.
    */
-  function handleCollectionClick(collectionName: string) {
-    goto(`${base}/${db}/${collectionName}?type=collection`);
+  function handleCollectionClick(collection: Collection) {
+    goto(
+      `${base}/${collectionsResponse.database.opaque_id}/${collection.opaque_id}?type=collection`
+    );
   }
 
   /**
    * Fetches the list of collections for the current database.
    */
-  export async function fetchCollections() {
-    loading = true;
+  export async function fetchCollections(forceRefresh: boolean = false) {
+    // Skip if data is already loaded and not forcing refresh (for tab switching optimization)
+    if (!forceRefresh && collectionsResponse.collections.length > 0) {
+      return;
+    }
+
+    isLoading = true;
     error = false;
     try {
       const query = new URLSearchParams();
@@ -102,6 +155,10 @@
     } catch (e) {
       error = true;
       collectionsResponse = {
+        database: {
+          name: "",
+          opaque_id: "",
+        },
         collections: [],
         total: 0,
         page: 1,
@@ -109,7 +166,7 @@
       };
       addNotification(e instanceof Error ? e.message : String(e), "error");
     } finally {
-      loading = false;
+      isLoading = false;
     }
   }
 
@@ -133,18 +190,30 @@
    */
   async function confirmDelete() {
     if (!colToDelete) return;
+
     try {
       await api.apiDelete(`/db/${db}/col/${colToDelete}`);
-      addNotification(
-        `Collection "${colToDelete}" deleted successfully.`,
-        "success"
-      );
-      await fetchCollections();
-    } catch (e) {
-      addNotification(e instanceof Error ? e.message : String(e), "error");
-    } finally {
+
+      // Close modal and show page loader immediately after API call completes
+      const colNameForNotification = colToDeleteName;
       showDeleteModal = false;
       colToDelete = null;
+      colToDeleteName = null;
+
+      // Show page loader while fetching updated data
+      isLoading = true;
+
+      addNotification(
+        `Collection "${colNameForNotification}" deleted successfully.`,
+        "success"
+      );
+      collectionsResponse.collections = []; // Clear cache to force refetch
+      await fetchCollections();
+    } catch (e) {
+      showDeleteModal = false;
+      colToDelete = null;
+      colToDeleteName = null;
+      addNotification(e instanceof Error ? e.message : String(e), "error");
     }
   }
 
@@ -154,16 +223,18 @@
   function cancelDelete() {
     showDeleteModal = false;
     colToDelete = null;
+    colToDeleteName = null;
   }
 
   /**
    * Handles the creation of a new collection.
    */
   async function handleCreateCollection() {
-    if (!createCollectionValid) return;
-
     try {
-      await api.apiPost(`/db/${db}/col/${newCollectionName}`, {});
+      await api.apiPost(`/db/col`, {
+        db: dbName,
+        name: newCollectionName,
+      });
       addNotification(
         `Collection "${newCollectionName}" created successfully.`,
         "success"
@@ -171,6 +242,7 @@
       showCreateModal = false;
       newCollectionName = "";
       currentPage = 1;
+      collectionsResponse.collections = []; // Clear cache to force refetch
       await fetchCollections();
     } catch (e) {
       addNotification(e instanceof Error ? e.message : String(e), "error");
@@ -180,11 +252,13 @@
   /**
    * Fetches collection data and triggers a download.
    */
-  async function handleExport(colName: string) {
+  async function handleExport(colOpaqueId: string, colName: string) {
     exportingCol = colName;
     try {
       addNotification(`Exporting collection "${colName}"...`, "success");
-      const response = await api.apiGet<any>(`/db/${db}/col/${colName}/export`);
+      const response = await api.apiGet<any>(
+        `/db/${db}/col/${colOpaqueId}/export`
+      );
 
       if (response && response.documents) {
         const jsonContent = JSON.stringify(response.documents, null, 2);
@@ -215,16 +289,100 @@
       exportingCol = null;
     }
   }
+
+  /**
+   * Toggles the stats popover for a collection.
+   */
+  async function toggleStats(colOpaqueId: string) {
+    if (showStatsPopover === colOpaqueId) {
+      // Close popover
+      showStatsPopover = null;
+      statsData = null;
+      statsLoading = false;
+      return;
+    }
+
+    // Open popover and fetch stats if not already loaded
+    showStatsPopover = colOpaqueId;
+
+    if (!statsCache[colOpaqueId]) {
+      statsLoading = true;
+      loadingStats[colOpaqueId] = true;
+      loadingStats = { ...loadingStats }; // Trigger reactivity
+      statsData = null;
+
+      try {
+        const response = await api.apiGet<any>(
+          `/db/${db}/col/${colOpaqueId}/stats`
+        );
+        statsCache[colOpaqueId] = response;
+        statsData = response;
+      } catch (e) {
+        addNotification(
+          `Failed to load stats: ${e instanceof Error ? e.message : String(e)}`,
+          "error"
+        );
+        showStatsPopover = null;
+      } finally {
+        statsLoading = false;
+        loadingStats[colOpaqueId] = false;
+        loadingStats = { ...loadingStats }; // Trigger reactivity
+      }
+    } else {
+      // Use cached data
+      statsData = statsCache[colOpaqueId];
+      statsLoading = false;
+    }
+  }
+
+  /**
+   * Copies collection name to clipboard
+   */
+  async function copyCollectionName(collectionName: string) {
+    try {
+      await navigator.clipboard.writeText(collectionName);
+      justCopied = collectionName;
+      setTimeout(() => {
+        justCopied = null;
+      }, 200); // Reset after 200ms
+    } catch (e) {
+      addNotification("Failed to copy to clipboard", "error");
+    }
+  }
+
+  /**
+   * Checks if a collection should be protected from deletion
+   */
+  function isProtectedCollection(
+    collectionName: string,
+    dbName: string
+  ): boolean {
+    const systemDatabases = ["admin", "local", "config", "mongodhara"];
+    const systemCollections = [
+      "system.users",
+      "system.roles",
+      "system.version",
+      "system.namespaces",
+    ];
+
+    // Protect all collections in system databases
+    if (systemDatabases.includes(dbName)) {
+      return true;
+    }
+
+    // Protect specific system collections in any database
+    return systemCollections.includes(collectionName);
+  }
 </script>
 
 <div class="flex-grow overflow-y-auto pb-4 relative h-full">
-  {#if loading}
+  {#if isLoading}
     <div
       class="flex flex-col items-center justify-center h-full absolute inset-0 bg-base-100"
       in:fade={{ duration: 400 }}
       out:fade={{ duration: 400 }}
       aria-live="polite"
-      aria-busy={loading}
+      aria-busy={isLoading}
     >
       <span
         class="loading loading-ring text-primary"
@@ -245,73 +403,120 @@
         </div>
       {:else if collectionsResponse.collections.length === 0}
         <div
-          class="text-center text-secondary/40 h-full flex flex-col justify-center items-center"
+          class="text-center text-secondary/60 h-full flex flex-col justify-center items-center"
         >
-          <p class="text-2xl font-semibold poppins">No content available</p>
+          <p class="text-2xl font-semibold poppins">No collections available</p>
         </div>
       {:else}
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 p-1">
-          {#each collectionsResponse.collections as collection, index (collection.collection_name)}
-            {@const rowNumber = Math.floor(index / 2) + 1}
-            {@const isLastRow = rowNumber === 8}
-            {@const hasTooltip = overflowingCols.has(
-              collection.collection_name
-            )}
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-1 p-1">
+          {#each collectionsResponse.collections as collection, index (collection.opaque_id)}
+            {@const isLastRow =
+              index >= collectionsResponse.collections.length - 4}
+            {@const hasTooltip = overflowingCols.has(collection.name)}
             <div
-              class="card group shadow-lg cursor-pointer hover:bg-neutral/20 hover:shadow-xl transition-all duration-200 ease-in-out h-14 {hasTooltip
+              class="card group shadow-sm cursor-pointer hover:bg-neutral/20 transition-all duration-200 ease-in-out h-14 {hasTooltip
                 ? `tooltip ${isLastRow ? 'tooltip-top' : 'tooltip-bottom'}`
                 : ''}"
-              data-tip={hasTooltip ? collection.collection_name : null}
+              data-tip={hasTooltip ? collection.name : null}
               role="button"
               tabindex="0"
-              on:click={() => handleCollectionClick(collection.collection_name)}
+              on:click={() => handleCollectionClick(collection)}
               on:keydown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  handleCollectionClick(collection.collection_name);
+                  handleCollectionClick(collection);
                 }
               }}
               style="position: relative;"
             >
-              <div class="card-body p-3 flex-row justify-between items-center">
+              <div
+                class="card-body px-2 py-1 flex-row justify-between items-center"
+              >
                 <div class="flex-1 mr-3 overflow-hidden" style="min-width: 0;">
                   <span
-                    use:checkTextOverflow={collection.collection_name}
-                    class="card-title text-l poppins font-normal block overflow-hidden text-ellipsis whitespace-nowrap"
+                    use:checkTextOverflow={collection.name}
+                    class="card-title text-base poppins font-normal transition-colors duration-200 block overflow-hidden text-ellipsis whitespace-nowrap"
                   >
-                    {collection.collection_name}
+                    {collection.name}
                   </span>
                 </div>
-                <div class="flex items-center space-x-2 flex-shrink-0">
-                  <div
-                    class="text-accent text-xs font-medium flex items-center justify-center"
-                  >
-                    #{formatCount(collection.documents_count)}
+                <div class="flex items-center gap-0.5 flex-shrink-0 relative">
+                  <div class="relative">
+                    <button
+                      on:click|stopPropagation={() =>
+                        toggleStats(collection.opaque_id)}
+                      class="tooltip tooltip-left hover:text-info px-2 rounded-full cursor-pointer"
+                      data-tip={`View Stats`}
+                      aria-label={`View stats for ${collection.name}`}
+                    >
+                      <i class="fas fa-chart-bar"></i>
+                    </button>
+                    {#if showStatsPopover === collection.opaque_id}
+                      <div
+                        in:fade={{ duration: 200 }}
+                        out:fade={{ duration: 200 }}
+                      >
+                        <StatsPopover
+                          data={statsData}
+                          loading={loadingStats[collection.opaque_id] || false}
+                          showPopover={true}
+                          rowIndex={index}
+                          totalRows={collectionsResponse.collections.length}
+                          onClose={() => {
+                            showStatsPopover = null;
+                            statsData = null;
+                            statsLoading = false;
+                          }}
+                        />
+                      </div>
+                    {/if}
                   </div>
                   <button
                     on:click|stopPropagation={() =>
-                      handleExport(collection.collection_name)}
+                      handleExport(collection.opaque_id, collection.name)}
                     class="tooltip tooltip-left hover:text-secondary px-2 rounded-full cursor-pointer"
                     data-tip={`Export as JSON`}
-                    aria-label={`Export collection ${collection.collection_name}`}
-                    disabled={exportingCol === collection.collection_name}
+                    aria-label={`Export collection ${collection.name}`}
+                    disabled={exportingCol === collection.name}
                   >
-                    {#if exportingCol === collection.collection_name}
-                      <span class="loading loading-spinner loading-sm"></span>
+                    {#if exportingCol === collection.name}
+                      <span class="loading loading-ring loading-sm"></span>
                     {:else}
-                      <i
-                        class="fa-solid fa-arrow-up-right-from-square text-lg p-2 rounded-full"
-                      ></i>
+                      <i class="fa-solid fa-arrow-up-right-from-square"></i>
                     {/if}
                   </button>
                   <button
                     on:click|stopPropagation={() =>
-                      handleDeleteClick(collection.collection_name)}
-                    class="tooltip tooltip-left hover:text-error px-2 rounded-full cursor-pointer"
-                    data-tip={`Delete`}
-                    aria-label={`Delete collection ${collection.collection_name}`}
+                      copyCollectionName(collection.name)}
+                    class="tooltip tooltip-left hover:text-primary px-2 rounded-full cursor-pointer"
+                    data-tip="Copy"
+                    aria-label={`Copy collection name ${collection.name}`}
                   >
-                    <i class="fas fa-trash-alt text-lg"></i>
+                    <i
+                      class="fa {justCopied === collection.name
+                        ? 'fa-solid'
+                        : 'fa-regular'} fa-copy"
+                    ></i>
+                  </button>
+                  <button
+                    on:click|stopPropagation={() => {
+                      colToDelete = collection.opaque_id;
+                      colToDeleteName = collection.name;
+                      showDeleteModal = true;
+                    }}
+                    class="tooltip tooltip-left {isProtectedCollection(
+                      collection.name,
+                      dbName
+                    )
+                      ? 'text-base-content/30 cursor-not-allowed'
+                      : 'hover:text-error cursor-pointer'} px-2 rounded-full"
+                    data-tip={isProtectedCollection(collection.name, dbName)
+                      ? "Cannot delete protected collection"
+                      : "Delete"}
+                    aria-label={`Delete collection ${collection.name}`}
+                    disabled={isProtectedCollection(collection.name, dbName)}
+                  >
+                    <i class="fas fa-trash-alt"></i>
                   </button>
                 </div>
               </div>
@@ -323,43 +528,39 @@
   {/if}
 </div>
 
-{#if showDeleteModal}
-  <Modal
-    title="Confirm Deletion"
-    message={`Are you sure you want to delete the collection "${colToDelete}"? This action cannot be undone.`}
-    onConfirm={confirmDelete}
-    onCancel={cancelDelete}
-  />
-{/if}
+<Modal
+  title="Confirm Deletion"
+  message={`Are you sure you want to delete the collection "${colToDeleteName}"? This action cannot be undone.`}
+  onConfirm={confirmDelete}
+  onCancel={cancelDelete}
+  show={showDeleteModal}
+/>
 
-{#if showCreateModal}
-  <Modal
-    title="Create New Collection"
-    message=""
-    onConfirm={handleCreateCollection}
-    onCancel={() => {
-      showCreateModal = false;
-      newCollectionName = "";
-    }}
-    confirmButtonText="Create"
-    cancelButtonText="Cancel"
-    confirmDisabled={!createCollectionValid}
-    validationMessage={collectionValidationMessage}
-  >
-    <div class="form-control">
-      <label class="label" for="newCollectionName">
-        <span class="label-text">Collection Name</span>
-      </label>
-      <input
-        type="text"
-        id="newCollectionName"
-        bind:value={newCollectionName}
-        placeholder="Enter collection name"
-        class="input input-bordered w-full input-secondary"
-      />
-    </div>
-  </Modal>
-{/if}
+<Modal
+  title="Create New Collection"
+  message=""
+  onConfirm={handleCreateCollection}
+  onCancel={() => {
+    showCreateModal = false;
+    newCollectionName = "";
+  }}
+  confirmButtonText="Create"
+  cancelButtonText="Cancel"
+  show={showCreateModal}
+>
+  <div class="form-control">
+    <label class="label" for="newCollectionName">
+      <span class="label-text">Collection Name</span>
+    </label>
+    <input
+      type="text"
+      id="newCollectionName"
+      bind:value={newCollectionName}
+      placeholder="Enter collection name"
+      class="input input-bordered w-full"
+    />
+  </div>
+</Modal>
 
 <style>
   .poppins {

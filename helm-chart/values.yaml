@@ -6,6 +6,28 @@
 global:
   imageRegistry: ""
   imagePullSecrets: []
+  
+  # Feature configuration with detailed sub-configs
+  features: 
+    # Opaque ID encryption for database objects
+    opaqueIds:
+      enabled: true  # Enable opaque ID encryption must for UI
+      autoGenerateKey: true  # Auto-generate encryption key on install (stored in k8s secret)
+    
+    # RBAC authorization system (requires OAuth)
+    authz:
+      enabled: false  # Enable RBAC authorization
+      initialAdminEmail: "admin@company.com"  # Email for initial admin user
+      emailHeader: "X-Auth-Request-Email"  # Header containing authenticated user email
+      databaseCleanup:
+        enabled: false  # Set to true to drop mongodhara database on uninstall
+        dropDatabase: true  # If true, drop entire database; if false, drop only user_permissions collection
+      existingDatabase:
+        action: "skip"  # Options: "skip" (safe), "warn", "recreate" (dangerous)
+    
+    # Audit logging for compliance and security monitoring
+    auditLogging:
+      enabled: false  # Enable audit logging to MongoDB
 
 # Backend API configuration
 backend:
@@ -13,11 +35,10 @@ backend:
   replicaCount: 1
   
   image:
-    repository: mongodhara/backend
+    repository: mongodhara/api
     pullPolicy: IfNotPresent
     tag: ""
   
-  imagePullSecrets: []
   nameOverride: ""
   fullnameOverride: ""
   
@@ -40,31 +61,37 @@ backend:
   
   # Environment variables
   env:
-    - name: MONGO_URI
-      value: "mongodb://localhost:27017"
     - name: BASE_PATH
       value: "/mdhara/api"
+    - name: LOG_LEVEL
+      value: "INFO"
+    - name: GRIDFS_CHUNK_SIZE
+      value: "4194304"  # 4MB chunks (optimal for 100MB max files)
+    - name: GRIDFS_MAX_FILE_SIZE
+      value: "104857600"
+    - name: GRIDFS_TIMEOUT
+      value: "120"  # 2 minutes (matches worker timeout)
   
   # MongoDB URI configuration - supports direct value or secret reference
   mongoUri:
-    # Option 1: Direct value (will override env.MONGO_URI if provided)
-    value: ""
-    # Option 2: Reference to secret
+    # Option 1: Direct value (not recommended for production)
+    value: ""  # e.g., "mongodb://user:pass@host:27017/dbname"
+    # Option 2: Reference to existing secret (recommended)
     secretRef:
       enabled: false
-      secretName: ""
-      key: "MONGO_URI"
+      secretName: ""  # Name of existing secret
+      key: "MONGO_URI"  # Key in secret containing the URI
   
   # Additional environment variables from ConfigMap or Secret
   envFrom: []
   
-  resources: {}
-    # limits:
-    #   cpu: 100m
-    #   memory: 128Mi
-    # requests:
-    #   cpu: 100m
-    #   memory: 128Mi
+  resources:
+    requests:
+      cpu: 500m        # Guaranteed 0.5 CPU core
+      memory: 1Gi      # Guaranteed 1GB RAM
+    limits:
+      cpu: 1500m       # Max 1.5 CPU cores for bursts
+      memory: 2Gi      # Max 2GB RAM
   
   # Health check probes
   probes:
@@ -101,11 +128,10 @@ frontend:
   replicaCount: 1
   
   image:
-    repository: mongodhara/frontend
+    repository: mongodhara/web
     pullPolicy: IfNotPresent
     tag: ""
   
-  imagePullSecrets: []
   nameOverride: ""
   fullnameOverride: ""
   
@@ -127,11 +153,8 @@ frontend:
     annotations: {}
   
   # Environment variables
-  env:
-    - name: VITE_API_BASE
-      value: ""
+  # Note: PUBLIC_AUTHZ_ENABLED is automatically set based on global.features.authz.enabled
   
-  # Additional environment variables from ConfigMap or Secret
   envFrom: []
   
   resources: {}
@@ -173,14 +196,44 @@ frontend:
 
 # Ingress configuration
 ingress:
-  # Shared configuration for both ingresses
-  shared:
-    className: "nginx"
-    host: "mongodhara.local"
+  # Global ingress enable/disable (can be overridden per-ingress)
+  enabled: true
+  
+  # Global settings
+  className: "nginx"
+  host: "mongodhara.company.com"
+  
+  # Security-first base annotations (applied to all ingresses)
+  baseAnnotations:
+    # Hide server info
+    nginx.ingress.kubernetes.io/server-tokens: "false"
     
-    # Common annotations applied to both ingresses
+    # SSL/TLS security (production ready)
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+  
+  # TLS configuration
+  tls:
+    enabled: true
+    secretName: "mongodhara-tls"
+
+  # Frontend ingress configuration
+  frontend:
+    enabled: true
+    path: /mdhara
+    pathType: Prefix
     annotations:
-      # CORS Configuration
+      # Frontend-specific rate limiting
+      nginx.ingress.kubernetes.io/rate-limit-rps: "100"
+      nginx.ingress.kubernetes.io/rate-limit-rpm: "6000"
+      nginx.ingress.kubernetes.io/rate-limit-connections: "200"
+      
+      # Frontend-specific timeouts (shorter for UI)
+      nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+      
+      # CORS for frontend
       nginx.ingress.kubernetes.io/enable-cors: "true"
       nginx.ingress.kubernetes.io/cors-allow-origin: "*"
       nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, PATCH, OPTIONS"
@@ -188,39 +241,119 @@ ingress:
       nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
       nginx.ingress.kubernetes.io/cors-max-age: "86400"
       
-      # Security headers
-      nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
-      nginx.ingress.kubernetes.io/proxy-send-timeout: "30"
-      nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
-      nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    # Shared TLS configuration
-    tls:
-      enabled: false
-      secretName: ""
+      # Frontend security headers
+      nginx.ingress.kubernetes.io/configuration-snippet: |
+        more_set_headers "X-Frame-Options: DENY";
+        more_set_headers "X-Content-Type-Options: nosniff";
+        more_set_headers "X-XSS-Protection: 1; mode=block";
+        more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+        more_set_headers "Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' cdn.jsdelivr.net fonts.googleapis.com cdnjs.cloudflare.com; img-src 'self' data: https:; font-src 'self' https: fonts.gstatic.com cdn.jsdelivr.net cdnjs.cloudflare.com; connect-src 'self' https:;";
+        more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload";
 
-  # Frontend ingress specific settings
-  frontend:
-    enabled: true
-    path: /mdhara
-    pathType: Prefix
-    
-    # Frontend-specific annotations (merged with shared)
-    # Keep empty if no frontend-specific annotations needed
-    annotations: {}
-
-  # Backend API ingress specific settings  
+  # Backend ingress configuration (general API)
   backend:
     enabled: true
     path: /mdhara/api
     pathType: Prefix
-    
-    # Backend-specific annotations (merged with shared)
-    annotations:      
-      # API-specific rate limiting
-      nginx.ingress.kubernetes.io/rate-limit-rps: "100"
-      nginx.ingress.kubernetes.io/rate-limit-rpm: "6000"
-      nginx.ingress.kubernetes.io/rate-limit-connections: "10"
-      nginx.ingress.kubernetes.io/limit-rps: "100"
-      nginx.ingress.kubernetes.io/limit-rpm: "6000" 
-      nginx.ingress.kubernetes.io/limit-connections: "10"
-      nginx.ingress.kubernetes.io/custom-http-errors: "429"
+    annotations:
+      # Backend API rate limiting
+      nginx.ingress.kubernetes.io/rate-limit-rps: "50"
+      nginx.ingress.kubernetes.io/rate-limit-rpm: "3000"
+      nginx.ingress.kubernetes.io/rate-limit-connections: "100"
+      
+      # Backend timeouts (moderate for API calls)
+      nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+      
+      # Backend security headers
+      nginx.ingress.kubernetes.io/configuration-snippet: |
+        more_set_headers "X-Frame-Options: DENY";
+        more_set_headers "X-Content-Type-Options: nosniff";
+        more_set_headers "X-XSS-Protection: 1; mode=block";
+        more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+        more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload";
+
+  # GridFS Upload ingress configuration (optimized for 100MB max files)
+  gridfsUpload:
+    enabled: true
+    annotations:
+      # HTTP/2 optimization for file transfers
+      nginx.ingress.kubernetes.io/use-http2: "true"
+      nginx.ingress.kubernetes.io/http2-max-concurrent-streams: "128"
+      
+      # Balanced rate limiting for uploads (optimized for performance)
+      nginx.ingress.kubernetes.io/rate-limit-rps: "20"
+      nginx.ingress.kubernetes.io/rate-limit-rpm: "600"
+      nginx.ingress.kubernetes.io/rate-limit-connections: "30"
+
+      # GridFS timeouts (optimized for 100MB max files - uploads)
+      nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "180"
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "180"
+
+      # GridFS-specific configurations
+      nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+
+      # Upload-specific optimizations (stream directly to backend)
+      nginx.ingress.kubernetes.io/configuration-snippet: |
+        proxy_buffering off;
+        proxy_request_buffering off;
+        client_body_buffer_size 8k;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "keep-alive";
+
+        # Security headers
+        more_set_headers "X-Frame-Options: DENY";
+        more_set_headers "X-Content-Type-Options: nosniff";
+        more_set_headers "X-XSS-Protection: 1; mode=block";
+        more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+        more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload";
+
+  # GridFS Download ingress configuration (optimized for performance)
+  gridfsDownload:
+    enabled: true
+    annotations:
+      # HTTP/2 optimization for file transfers
+      nginx.ingress.kubernetes.io/use-http2: "true"
+      nginx.ingress.kubernetes.io/http2-max-concurrent-streams: "128"
+      
+      # Optimized rate limiting for downloads (less resource-intensive than uploads)
+      nginx.ingress.kubernetes.io/rate-limit-rps: "50"
+      nginx.ingress.kubernetes.io/rate-limit-rpm: "1500"
+      nginx.ingress.kubernetes.io/rate-limit-connections: "100"
+
+      # GridFS timeouts (optimized for 100MB max files - downloads)
+      nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "180"
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "180"
+
+      # GridFS-specific configurations
+      nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+
+      # Download-specific optimizations (smart buffering for 4MB chunks)
+      nginx.ingress.kubernetes.io/configuration-snippet: |
+        proxy_buffering on;
+        proxy_buffer_size 64k;
+        proxy_buffers 4 64k;
+        proxy_busy_buffers_size 128k;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "keep-alive";
+        more_set_headers "Accept-Ranges: bytes";
+
+        # Security headers
+        more_set_headers "X-Frame-Options: DENY";
+        more_set_headers "X-Content-Type-Options: nosniff";
+        more_set_headers "X-XSS-Protection: 1; mode=block";
+        more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+        more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload";
+
+  # OAuth configuration (can be enabled per ingress)
+  auth:
+    oauth:
+      enabled: false  # Set to true to enable OAuth authentication
+      # OAuth configuration (only used when enabled)
+      annotations:
+        nginx.ingress.kubernetes.io/auth-url: "https://oauth.company.com/auth"
+        nginx.ingress.kubernetes.io/auth-signin: "https://oauth.company.com/start"
+        nginx.ingress.kubernetes.io/auth-response-headers: "X-Auth-Request-User,X-Auth-Request-Email,X-Auth-Request-Groups"

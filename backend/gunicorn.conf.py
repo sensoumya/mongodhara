@@ -1,5 +1,4 @@
 # gunicorn.conf.py
-import multiprocessing
 import os
 
 # Server socket
@@ -7,21 +6,23 @@ bind = "0.0.0.0:8000"
 backlog = 2048
 
 # Worker processes
-workers = multiprocessing.cpu_count() * 2 + 1
+workers = 4  # Fixed 4 workers for optimal performance with 100MB max files
 worker_class = "uvicorn.workers.UvicornWorker"
-worker_connections = 1000
-max_requests = 1000
-max_requests_jitter = 100
+worker_connections = 1000  # 1000 concurrent connections per worker
+threads = 2  # 2 threads per worker for I/O operations
+max_requests = 2000  # Recycle worker after 2000 requests
+max_requests_jitter = 200  # Add jitter to prevent thundering herd
 
 # Timeouts
-timeout = 30
-keepalive = 2
+timeout = 120  # 2 minutes (optimized for 100MB uploads)
+keepalive = 5  # Keep connections alive for 5 seconds
 
 # Logging
-accesslog = "-"
-errorlog = "-"
-loglevel = "info"
-access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)s'
+# Disable uvicorn access logs (we handle them in AccessLogMiddleware)
+accesslog = None  # Disable default access logs
+errorlog = "-"  # Keep error logs
+loglevel = os.getenv("LOG_LEVEL", "info").lower()
+# access_log_format not needed since accesslog is disabled
 
 # Process naming
 proc_name = "mongodhara-backend"

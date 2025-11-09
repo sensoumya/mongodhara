@@ -1,8 +1,12 @@
 {{- if .Values.backend.enabled }}
+{{- /* Validation: AuthZ requires OAuth */ -}}
+{{- if and .Values.global.features.authz.enabled (not .Values.ingress.auth.oauth.enabled) }}
+{{- fail "ERROR: global.features.authz.enabled=true requires ingress.auth.oauth.enabled=true. Authorization system depends on OAuth authentication." }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-mongodhara-services
+  name: {{ .Release.Name }}-api
   labels:
     {{- include "mongodhara.backend.labels" . | nindent 4 }}
 spec:
@@ -21,15 +25,46 @@ spec:
       labels:
         {{- include "mongodhara.backend.selectorLabels" . | nindent 8 }}
     spec:
-      {{- with .Values.backend.imagePullSecrets }}
+      {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "mongodhara.backend.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.backend.podSecurityContext | nindent 8 }}
+      {{- if .Values.global.features.opaqueIds.autoGenerateKey }}
+      initContainers:
+        - name: wait-for-opaque-key
+          image: busybox:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for OPAQUE_ID_ENCRYPTION_KEY to be populated in secret..."
+              # Wait for the secret to be mounted and contain the key
+              while true; do
+                if [ -f /secrets/OPAQUE_ID_ENCRYPTION_KEY ] && [ -s /secrets/OPAQUE_ID_ENCRYPTION_KEY ]; then
+                  echo "OPAQUE_ID_ENCRYPTION_KEY found in mounted secret, proceeding..."
+                  break
+                fi
+                echo "OPAQUE_ID_ENCRYPTION_KEY not yet available, waiting..."
+                sleep 5
+              done
+          volumeMounts:
+            - name: opaque-key-secret
+              mountPath: /secrets
+              readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+      {{- end }}
       containers:
-        - name: {{ .Chart.Name }}-backend
+        - name: backend
           securityContext:
             {{- toYaml .Values.backend.securityContext | nindent 12 }}
           image: {{ include "mongodhara.backend.image" . }}
@@ -38,6 +73,12 @@ spec:
             - name: http
               containerPort: {{ .Values.backend.service.targetPort }}
               protocol: TCP
+          {{- if .Values.global.features.opaqueIds.autoGenerateKey }}
+          volumeMounts:
+            - name: opaque-key-secret
+              mountPath: /secrets
+              readOnly: true
+          {{- end }}
           env:
             {{- if .Values.backend.mongoUri.secretRef.enabled }}
             # MONGO_URI from secret
@@ -51,13 +92,31 @@ spec:
             - name: MONGO_URI
               value: {{ .Values.backend.mongoUri.value | quote }}
             {{- end }}
+            # Feature flags from global config
+            - name: ENABLE_OPAQUE_IDS
+              value: {{ .Values.global.features.opaqueIds.enabled | quote }}
+            - name: ENABLE_AUTHZ
+              value: {{ .Values.global.features.authz.enabled | quote }}
+            - name: ENABLE_AUDIT_LOGGING
+              value: {{ .Values.global.features.auditLogging.enabled | quote }}
+            {{- if .Values.global.features.opaqueIds.autoGenerateKey }}
+            # OPAQUE_ID_ENCRYPTION_KEY from auto-generated secret
+            - name: OPAQUE_ID_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-creds
+                  key: OPAQUE_ID_ENCRYPTION_KEY
+            {{- end }}
+            {{- if .Values.global.features.authz.enabled }}
+            # Authorization configuration from global config
+            - name: AUTH_EMAIL_HEADER
+              value: {{ .Values.global.features.authz.emailHeader | quote }}
+            {{- end }}
             {{- if .Values.backend.env }}
-            # Additional environment variables
+            # Additional environment variables from backend.env
             {{- range .Values.backend.env }}
-            {{- if ne .name "MONGO_URI" }}
             - name: {{ .name }}
               value: {{ .value | quote }}
-            {{- end }}
             {{- end }}
             {{- end }}
           {{- with .Values.backend.envFrom }}
@@ -86,6 +145,15 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
+      {{- if .Values.global.features.opaqueIds.autoGenerateKey }}
+      volumes:
+        - name: opaque-key-secret
+          secret:
+            secretName: {{ .Release.Name }}-creds
+            items:
+              - key: OPAQUE_ID_ENCRYPTION_KEY
+                path: OPAQUE_ID_ENCRYPTION_KEY
+      {{- end }}
       {{- with .Values.backend.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

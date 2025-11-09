@@ -6,16 +6,16 @@
   {{- end }}
 {{- end }}
 {{- else if contains "NodePort" .Values.frontend.service.type }}
-  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "mongodhara.fullname" . }}-frontend)
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ .Release.Name }}-web)
   export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
   echo http://$NODE_IP:$NODE_PORT
 {{- else if contains "LoadBalancer" .Values.frontend.service.type }}
      NOTE: It may take a few minutes for the LoadBalancer IP to be available.
-           You can watch the status of by running 'kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "mongodhara.fullname" . }}-frontend'
-  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "mongodhara.fullname" . }}-frontend --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+           You can watch the status of by running 'kubectl get --namespace {{ .Release.Namespace }} svc -w {{ .Release.Name }}-web'
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ .Release.Name }}-web --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
   echo http://$SERVICE_IP:{{ .Values.frontend.service.port }}
 {{- else if contains "ClusterIP" .Values.frontend.service.type }}
-  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "mongodhara.name" . }}-frontend,app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ .Release.Name }}-web,app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
   export CONTAINER_PORT=$(kubectl get pod --namespace {{ .Release.Namespace }} $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
   echo "Visit http://127.0.0.1:8080 to use your application"
   kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8080:$CONTAINER_PORT
@@ -23,23 +23,45 @@
 
 2. Mongodhara components:
 {{- if .Values.backend.enabled }}
-  - Backend API: {{ include "mongodhara.fullname" . }}-backend
+  - Backend API: {{ .Release.Name }}-api
 {{- end }}
 {{- if .Values.frontend.enabled }}
-  - Frontend UI: {{ include "mongodhara.fullname" . }}-frontend  
+  - Frontend UI: {{ .Release.Name }}-web
 {{- end }}
 
-3. Configuration:
-  - MongoDB URI: {{ (index .Values.backend.env 0).value }}
-  - API Base URL: {{ (index .Values.frontend.env 0).value }}
+3. Database Configuration:
+{{- if .Values.backend.mongoUri.secretRef.enabled }}
+  - MongoDB URI: Configured via secret '{{ .Values.backend.mongoUri.secretRef.secretName }}' (key: {{ .Values.backend.mongoUri.secretRef.key }})
+{{- else if .Values.backend.mongoUri.value }}
+  - MongoDB URI: {{ .Values.backend.mongoUri.value }}
+{{- else }}
+  - MongoDB URI: Not configured - set via values.yaml mongoUri section
+{{- end }}
 
-4. To customize your deployment, modify the values.yaml file and upgrade:
+4. Feature Status:
+{{- if .Values.global.features.opaqueIds.enabled }}
+  - Opaque IDs: Enabled{{ if .Values.global.features.opaqueIds.autoGenerateKey }} (auto-generated key){{ end }}
+{{- else }}
+  - Opaque IDs: Disabled
+{{- end }}
+{{- if .Values.global.features.authz.enabled }}
+  - RBAC Authorization: Enabled
+{{- else }}
+  - RBAC Authorization: Disabled
+{{- end }}
+{{- if .Values.global.features.auditLogging.enabled }}
+  - Audit Logging: Enabled
+{{- else }}
+  - Audit Logging: Disabled
+{{- end }}
+
+5. To customize your deployment, modify the values.yaml file and upgrade:
   helm upgrade {{ .Release.Name }} ./helm-chart -f values.yaml
 
-5. To view logs:
+6. To view logs:
 {{- if .Values.backend.enabled }}
-  kubectl logs -f deployment/{{ include "mongodhara.fullname" . }}-backend -n {{ .Release.Namespace }}
+  kubectl logs -f deployment/{{ .Release.Name }}-api -n {{ .Release.Namespace }}
 {{- end }}
 {{- if .Values.frontend.enabled }}
-  kubectl logs -f deployment/{{ include "mongodhara.fullname" . }}-frontend -n {{ .Release.Namespace }}
+  kubectl logs -f deployment/{{ .Release.Name }}-web -n {{ .Release.Namespace }}
 {{- end }}

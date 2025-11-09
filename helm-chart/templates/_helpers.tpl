@@ -60,16 +60,16 @@ helm.sh/chart: {{ include "mongodhara.chart" . }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
-app.kubernetes.io/component: backend
+app.kubernetes.io/component: api
 {{- end }}
 
 {{/*
 Backend selector labels
 */}}
 {{- define "mongodhara.backend.selectorLabels" -}}
-app.kubernetes.io/name: {{ .Release.Name }}-mongodhara-services
+app.kubernetes.io/name: {{ .Release.Name }}-api
 app.kubernetes.io/instance: {{ .Release.Name }}
-app.kubernetes.io/component: backend
+app.kubernetes.io/component: api
 {{- end }}
 
 {{/*
@@ -82,16 +82,16 @@ helm.sh/chart: {{ include "mongodhara.chart" . }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
-app.kubernetes.io/component: frontend
+app.kubernetes.io/component: web
 {{- end }}
 
 {{/*
 Frontend selector labels
 */}}
 {{- define "mongodhara.frontend.selectorLabels" -}}
-app.kubernetes.io/name: {{ .Release.Name }}-mongodhara
+app.kubernetes.io/name: {{ .Release.Name }}-web
 app.kubernetes.io/instance: {{ .Release.Name }}
-app.kubernetes.io/component: frontend
+app.kubernetes.io/component: web
 {{- end }}
 
 {{/*
@@ -99,7 +99,7 @@ Create the name of the service account to use for backend
 */}}
 {{- define "mongodhara.backend.serviceAccountName" -}}
 {{- if .Values.backend.serviceAccount.create }}
-{{- default (printf "%s-mongodhara-services" .Release.Name) .Values.backend.serviceAccount.name }}
+{{- default (printf "%s-api" .Release.Name) .Values.backend.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.backend.serviceAccount.name }}
 {{- end }}
@@ -110,7 +110,7 @@ Create the name of the service account to use for frontend
 */}}
 {{- define "mongodhara.frontend.serviceAccountName" -}}
 {{- if .Values.frontend.serviceAccount.create }}
-{{- default (printf "%s-mongodhara" .Release.Name) .Values.frontend.serviceAccount.name }}
+{{- default (printf "%s-web" .Release.Name) .Values.frontend.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.frontend.serviceAccount.name }}
 {{- end }}
@@ -141,5 +141,28 @@ Frontend image
 {{- printf "%s/%s:%s" $registryName $repositoryName $tag -}}
 {{- else }}
 {{- printf "%s:%s" $repositoryName $tag -}}
+{{- end }}
+{{- end }}
+
+{{/*
+Image prefix helper - returns registry prefix if set
+*/}}
+{{- define "mongodhara.imagePrefix" -}}
+{{- if .Values.global.imageRegistry }}
+{{- printf "%s/" .Values.global.imageRegistry -}}
+{{- end }}
+{{- end }}
+
+{{/*
+Convert config section to environment variables
+Usage: include "mongodhara.envFromConfig" (dict "config" .Values.global.features.opaqueIds "prefix" "OPAQUE_ID")
+*/}}
+{{- define "mongodhara.envFromConfig" -}}
+{{- $config := .config -}}
+{{- $prefix := .prefix -}}
+{{- range $key, $value := $config -}}
+{{- $envKey := printf "%s_%s" $prefix (upper $key | replace "." "_") -}}
+- name: {{ $envKey }}
+  value: {{ $value | quote }}
 {{- end }}
 {{- end }}

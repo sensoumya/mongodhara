@@ -13,8 +13,18 @@ function url(path: string): string {
   // return `${API_BASE}${path}`;
 }
 
+// Temporary testing configuration - all API calls use admin auth
+function getDefaultHeaders(additionalHeaders?: Record<string, string>): Record<string, string> {
+  return {
+    //"X-Auth-Request-Email": "admin@company.com",
+    ...additionalHeaders
+  };
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(url(path));
+  const res = await fetch(url(path), {
+    headers: getDefaultHeaders()
+  });
   
   // Handle different HTTP status codes
   if (res.status === 401) {
@@ -36,7 +46,7 @@ export async function apiGet<T>(path: string): Promise<T> {
 export async function apiPost<T>(path: string, body?: any): Promise<T> {
   const res = await fetch(url(path), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getDefaultHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
   });
   
@@ -60,7 +70,7 @@ export async function apiPost<T>(path: string, body?: any): Promise<T> {
 export async function apiPut<T>(path: string, body: any): Promise<T> {
   const res = await fetch(url(path), {
     method: "PUT",  
-    headers: { "Content-Type": "application/json" },
+    headers: getDefaultHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
   });
   
@@ -84,6 +94,7 @@ export async function apiPut<T>(path: string, body: any): Promise<T> {
 export async function apiDelete<T>(path: string): Promise<T> {
   const res = await fetch(url(path), {
     method: "DELETE",
+    headers: getDefaultHeaders()
   });
   
   // Handle different HTTP status codes
@@ -106,6 +117,7 @@ export async function apiDelete<T>(path: string): Promise<T> {
 export async function apiUploadFile<T>(path: string, formData: FormData): Promise<T> {
   const res = await fetch(url(path), {
     method: "POST",
+    headers: getDefaultHeaders(),
     body: formData,
   });
   
@@ -132,7 +144,9 @@ export async function apiUploadFile<T>(path: string, formData: FormData): Promis
 }
 
 export async function apiDownload(path: string): Promise<Blob> {
-  const res = await fetch(url(path));
+  const res = await fetch(url(path), {
+    headers: getDefaultHeaders()
+  });
   
   // Handle different HTTP status codes
   if (res.status === 401) {
@@ -151,7 +165,9 @@ export async function apiDownload(path: string): Promise<Blob> {
 }
 
 export async function apiDownloadText(path: string): Promise<string> {
-  const res = await fetch(url(path));
+  const res = await fetch(url(path), {
+    headers: getDefaultHeaders()
+  });
   
   // Handle different HTTP status codes
   if (res.status === 401) {

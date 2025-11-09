@@ -14,20 +14,28 @@ export interface Document {
   [key: string]: any;
 }
 
+export interface DatabaseListItem {
+  name: string;
+  opaque_id: string;
+}
+
 export interface PaginatedDatabases {
-  databases: string[];
+  databases: DatabaseListItem[];
   total: number;
   page: number;
   page_size: number;
 }
 
 export interface Collection {
-  collection_name: string;
-  documents_count: number;
-  total_size: number;
+  name: string;
+  opaque_id: string;
 }
 
 export interface PaginatedCollections {
+  database: {
+    name: string;
+    opaque_id: string;
+  };
   collections: Collection[];
   total: number;
   page: number;
@@ -36,11 +44,14 @@ export interface PaginatedCollections {
 
 export interface GridFSBucket {
   bucket_name: string;
-  files_count: number;
-  total_size: number;
+  opaque_id: string;
 }
 
 export interface PaginatedGridFSBuckets {
+  database: {
+    name: string;
+    opaque_id: string;
+  };
   buckets: GridFSBucket[];
   total: number;
   page: number;
@@ -59,5 +70,6 @@ export interface BreadcrumbSegment {
   href?: string;
   label?: string;
   isHome?: boolean;
+  loading?: boolean;
 }
 

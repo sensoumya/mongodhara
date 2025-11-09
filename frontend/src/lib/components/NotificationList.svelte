@@ -53,9 +53,7 @@
 </script>
 
 <!-- Notification container -->
-<div
-  class="fixed top-[64px] right-4 z-[9999] flex flex-col items-end space-y-2"
->
+<div class="fixed top-16 right-4 z-[9999] flex flex-col items-end space-y-2">
   {#each $notifications as notification (notification.id)}
     {@const config = typeToConfig[notification.type]}
     {#if config}

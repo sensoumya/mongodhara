@@ -8,6 +8,7 @@
   import { json } from "@codemirror/lang-json";
   import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
   import { lintGutter, linter } from "@codemirror/lint";
+  import { search, searchKeymap } from "@codemirror/search";
   import { EditorView, keymap } from "@codemirror/view";
   import { tags } from "@lezer/highlight";
   import { basicSetup } from "codemirror";
@@ -17,6 +18,7 @@
   export let isOpen: boolean = false;
   export let document: any = {};
   export let readOnly: boolean = false;
+  export let showRefetch: boolean = false; // Show refetch button only for existing documents
   const dispatch = createEventDispatcher();
 
   let editorContainer: HTMLElement;
@@ -29,13 +31,30 @@
   let alertMessage = "";
   let jsonString: string;
   let copySuccess = false;
+  let isResizing = false;
+  let originalJsonString = ""; // Store original content for change detection
+  let hasChanges = false; // Track if content has been modified
+  let isSaving = false; // Track save operation loading state
+  let isValidJson = true; // Track if current content is valid JSON
+  let isRefetching = false; // Track refetch operation loading state
 
-  // Custom theme to enforce full height
+  // Custom theme to enforce full height and position search at top
   const fullHeightTheme = EditorView.theme({
     "&": { height: "100%" },
-    ".cm-scroller": { minHeight: "100%" },
-    ".cm-content": { minHeight: "100%" },
+    ".cm-scroller": {
+      minHeight: "100%",
+      paddingBottom: "5rem", // Add space at bottom for floating buttons
+    },
+    ".cm-content": {
+      minHeight: "100%",
+    },
     ".cm-gutters": { minHeight: "100%" },
+    ".cm-search": {
+      order: "-1",
+    },
+    ".cm-panels-top": {
+      borderBottom: "1px solid hsl(var(--b3))",
+    },
   });
 
   // DaisyUI Theme Extension - Minimal theme, let global CSS handle selection
@@ -105,11 +124,18 @@
       });
       jsonString = newJsonString;
     }
+    // Set original content for change detection
+    originalJsonString = newJsonString;
+    hasChanges = false;
+    isValidJson = true;
   }
 
   onMount(() => {
     if (window.innerWidth > 1024) panelWidth = window.innerWidth * 0.6;
     jsonString = JSON.stringify(document || {}, null, 4);
+    originalJsonString = jsonString;
+    hasChanges = false;
+    isValidJson = true;
     initializeEditor();
   });
 
@@ -187,7 +213,13 @@
       }),
       EditorView.lineWrapping,
       history(),
-      keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+      search({ top: true }),
+      keymap.of([
+        ...defaultKeymap,
+        ...historyKeymap,
+        ...searchKeymap,
+        indentWithTab,
+      ]),
       fullHeightTheme,
       daisyUITheme,
     ];
@@ -200,6 +232,14 @@
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             jsonString = update.state.doc.toString();
+            hasChanges = jsonString !== originalJsonString;
+            // Validate JSON
+            try {
+              JSON.parse(jsonString);
+              isValidJson = true;
+            } catch {
+              isValidJson = false;
+            }
           }
         })
       );
@@ -220,6 +260,7 @@
   function startResize(event: MouseEvent) {
     if (isExpanded) return;
     event.preventDefault();
+    isResizing = true;
     const startX = event.clientX;
     const startWidth = panelElement.offsetWidth;
 
@@ -228,6 +269,7 @@
       panelWidth = Math.max(newWidth, minWidth);
     }
     function handleMouseUp() {
+      isResizing = false;
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     }
@@ -256,7 +298,7 @@
       copySuccess = true;
       setTimeout(() => {
         copySuccess = false;
-      }, 2000);
+      }, 200);
     } catch {
       alertMessage = "Failed to copy to clipboard!";
       showAlert = true;
@@ -266,6 +308,7 @@
   function save() {
     try {
       const parsed = JSON.parse(editorView!.state.doc.toString());
+      isSaving = true;
       dispatch("save", parsed);
     } catch {
       alertMessage = "Cannot save invalid JSON!";
@@ -276,6 +319,29 @@
   function close() {
     isOpen = false;
     dispatch("close");
+  }
+
+  function refetch() {
+    isRefetching = true;
+    dispatch("refetch");
+  }
+
+  // Method to call when refetch operation completes
+  export function refetchComplete() {
+    isRefetching = false;
+  }
+
+  // Method to call when save operation completes successfully
+  export function saveComplete() {
+    isSaving = false;
+    hasChanges = false;
+    originalJsonString = jsonString;
+  }
+
+  // Method to call when save operation fails
+  export function saveFailed() {
+    isSaving = false;
+    // Keep hasChanges as true so user can retry
   }
 
   function handleBackdropClick(event: MouseEvent) {
@@ -294,80 +360,114 @@
 </script>
 
 <div
-  class="fixed inset-0"
+  class="fixed inset-0 bg-base-300/50 transition-opacity duration-200"
   class:pointer-events-none={!isOpen}
+  class:opacity-0={!isOpen}
   on:click={handleBackdropClick}
 >
   <div
-    class="absolute top-16 right-0 h-[calc(100vh-4rem)] bg-base-100 shadow-2xl transition-all duration-300 ease-in-out flex flex-row-reverse z-[9999]"
-    class:translate-x-full={!isOpen}
-    style="width: {currentPanelWidth};"
+    class="absolute top-[5.625rem] bottom-4 right-0 bg-base-100 flex flex-row-reverse z-[9999] rounded-tl-lg rounded-bl-lg will-change-transform"
+    class:shadow-2xl={isOpen}
+    class:shadow-lg={!isOpen}
+    style="width: {currentPanelWidth}; transform-origin: right center; transform: {isOpen
+      ? 'translateX(0) scale(1)'
+      : 'translateX(100%) scale(0.96)'}; transition: {isResizing
+      ? 'none'
+      : 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease-out'};"
     bind:this={panelElement}
     on:click|stopPropagation
   >
     <div
-      class="w-2 h-full cursor-col-resize absolute left-0 top-0 z-10 hover:bg-base-200 transition-colors"
+      class="w-6 h-full cursor-col-resize absolute left-0 top-0 z-10 flex items-center justify-center group"
       on:mousedown={startResize}
-    ></div>
-
-    <div class="flex flex-col flex-grow p-4">
+    >
       <div
-        class="flex-grow w-full rounded-lg font-mono text-sm bg-base-200 text-base-content shadow-inner overflow-hidden border border-base-300"
-        bind:this={editorContainer}
+        class="w-1 h-16 bg-base-300 rounded-full group-hover:bg-base-content/30 group-active:bg-base-content/50 transition-all duration-150"
       ></div>
+    </div>
 
-      <div class="flex justify-between space-x-3 pt-3 pb-4 px-0 mt-4">
-        <div class="flex space-x-3">
-          <div class="tooltip" data-tip="Close">
+    <div class="flex flex-col flex-grow p-2">
+      <div
+        class="flex-grow w-full font-mono text-sm bg-base-200 text-base-content overflow-hidden relative rounded-lg border border-base-300 shadow-inner"
+        bind:this={editorContainer}
+      >
+        <!-- Floating button panel inside editor -->
+        <div
+          class="absolute bottom-2 left-2 right-2 z-20 flex justify-between items-center"
+        >
+          <!-- Left side buttons with individual circular backgrounds -->
+          <div class="flex items-center space-x-2">
             <button
               on:click={close}
-              class="btn btn-ghost btn-circle hover:text-accent hover:bg-base-200/80"
+              class="w-8 h-8 rounded-full bg-base-100/95 backdrop-blur-sm shadow-lg border border-base-300 flex items-center justify-center text-base-content hover:text-accent hover:border-accent/50 transition-all"
             >
-              <i class="fas fa-times text-lg"></i>
+              <i class="fas fa-times"></i>
             </button>
-          </div>
-          <div class="tooltip" data-tip={isExpanded ? "Collapse" : "Expand"}>
             <button
               on:click={toggleExpand}
-              class="btn btn-ghost hover:text-accent hover:bg-base-200/80"
+              class="w-8 h-8 rounded-full bg-base-100/95 backdrop-blur-sm shadow-lg border border-base-300 flex items-center justify-center text-base-content hover:text-accent hover:border-accent/50 transition-all"
             >
               {#if isExpanded}
-                <i class="fas fa-compress text-lg"></i>
+                <i class="fas fa-compress"></i>
               {:else}
-                <i class="fas fa-expand text-lg"></i>
+                <i class="fas fa-expand"></i>
               {/if}
             </button>
-          </div>
-        </div>
-
-        <div class="flex space-x-3">
-          <div class="tooltip tooltip-left" data-tip="Copy Content">
             <button
               on:click={copyToClipboard}
-              class="btn btn-ghost hover:text-secondary hover:bg-base-200/80"
+              class="w-8 h-8 rounded-full bg-base-100/95 backdrop-blur-sm shadow-lg border border-base-300 flex items-center justify-center hover:border-accent/50 transition-all"
             >
               {#if copySuccess}
-                <i class="fas fa-check text-lg text-success"></i>
+                <i class="fas fa-copy text-accent"></i>
               {:else}
-                <i class="fas fa-copy text-lg"></i>
+                <i
+                  class="fa-regular fa-copy text-base-content hover:text-accent"
+                ></i>
               {/if}
             </button>
+            {#if showRefetch}
+              <button
+                on:click={refetch}
+                disabled={isRefetching}
+                class="w-8 h-8 rounded-full bg-base-100/95 backdrop-blur-sm shadow-lg border border-base-300 flex items-center justify-center text-base-content hover:text-accent hover:border-accent/50 transition-all"
+              >
+                {#if isRefetching}
+                  <span class="loading loading-ring loading-xs"></span>
+                {:else}
+                  <i class="fas fa-rotate-right"></i>
+                {/if}
+              </button>
+            {/if}
           </div>
-          <div class="tooltip tooltip-left" data-tip="Reformat JSON">
+
+          <!-- Right side buttons as individual elements -->
+          <div class="flex items-center space-x-2">
             <button
               on:click={prettify}
-              class="btn btn-ghost hover:text-secondary hover:bg-base-200/80"
+              class="btn btn-sm bg-base-100/95 backdrop-blur-sm shadow-lg border border-base-300 hover:text-secondary hover:border-secondary/50 transition-all"
             >
-              <i class="fa-solid fa-wand-magic-sparkles text-lg"></i>
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+              <span class="hidden md:inline">Format</span>
             </button>
-          </div>
-          {#if !readOnly}
-            <div class="tooltip tooltip-left" data-tip="Save Document">
-              <button on:click={save} class="btn btn-primary">
-                <i class="fas fa-save text-lg"></i>
+            {#if !readOnly}
+              <button
+                on:click={save}
+                disabled={!hasChanges || !isValidJson || isSaving}
+                class="btn btn-primary btn-sm shadow-lg w-20 {isSaving
+                  ? '!bg-primary !border-primary'
+                  : ''}"
+              >
+                {#if isSaving}
+                  <span
+                    class="loading loading-ring loading-sm !text-primary-content"
+                  ></span>
+                {:else}
+                  <i class="fas fa-save"></i>
+                  <span class="hidden md:inline">Save</span>
+                {/if}
               </button>
-            </div>
-          {/if}
+            {/if}
+          </div>
         </div>
       </div>
     </div>

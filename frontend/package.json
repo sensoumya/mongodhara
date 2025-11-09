@@ -1,7 +1,7 @@
 {
-    "name": "newui",
+    "name": "mongodhara",
     "private": true,
-    "version": "0.0.1",
+    "version": "2.2",
     "type": "module",
     "scripts": {
         "dev": "vite dev",
@@ -12,7 +12,7 @@
         "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
     },
     "devDependencies": {
-        "@sveltejs/kit": "^2.22.0",
+        "@sveltejs/kit": "^2.47.3",
         "@sveltejs/vite-plugin-svelte": "^6.0.0",
         "autoprefixer": "^10.4.21",
         "daisyui": "^5.1.7",
@@ -32,8 +32,8 @@
         "@codemirror/search": "^6.5.11",
         "@codemirror/view": "^6.38.4",
         "@lezer/highlight": "^1.2.1",
-        "@sveltejs/adapter-node": "^5.0.1",
-        "@tailwindcss/vite": "^4.1.11",
+        "@sveltejs/adapter-node": "^5.4.0",
+        "@tailwindcss/vite": "^4.1.16",
         "codemirror": "^6.0.2"
     }
 }

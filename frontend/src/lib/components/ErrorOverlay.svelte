@@ -1,4 +1,4 @@
- <script lang="ts">
+<script lang="ts">
   import { errorOverlayState } from "$lib/stores/error-overlay";
   import { fade } from "svelte/transition";
 
@@ -48,15 +48,14 @@
 {#if $errorOverlayState.visible}
   <!-- Hazy backdrop -->
   <div
-    class="fixed inset-0 z-40"
-    style="backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); background: rgba(0, 0, 0, 0.3);"
+    class="fixed inset-0 z-[100] backdrop-blur bg-black/30"
     in:fade={{ duration: 300 }}
     out:fade={{ duration: 300 }}
   ></div>
 
   <!-- Error overlay content -->
   <div
-    class="fixed inset-0 z-50 flex items-center justify-center"
+    class="fixed inset-0 z-[110] flex items-center justify-center"
     style="background: 
       radial-gradient(circle at 25% 25%, hsl(var(--b2) / 0.3) 0%, transparent 50%),
       radial-gradient(circle at 75% 75%, hsl(var(--b3) / 0.2) 0%, transparent 50%),
@@ -94,11 +93,6 @@
           </div>
         </div>
       {/if} -->
-
-      <!-- <button on:click={handleReload} class="btn btn-primary btn-lg gap-2">
-        <i class="fas fa-refresh"></i>
-        Reload Page
-      </button> -->
     </div>
   </div>
 {/if}
