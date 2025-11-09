@@ -9,6 +9,8 @@
 
   export let segments: BreadcrumbSegment[];
 
+  let copiedIndex: number | null = null;
+
   /**
    * Truncates a string by keeping the beginning and end with ellipsis in the middle
    * @param str The string to truncate
@@ -28,6 +30,21 @@
       str.substring(str.length - backChars)
     );
   }
+
+  /**
+   * Copies the segment name to clipboard
+   */
+  async function copyToClipboard(name: string, index: number) {
+    try {
+      await navigator.clipboard.writeText(name);
+      copiedIndex = index;
+      setTimeout(() => {
+        copiedIndex = null;
+      }, 200); // Reset after 200ms
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  }
 </script>
 
 <div class="flex items-center text-sm">
@@ -45,24 +62,37 @@
       >
         {#if segment.isHome}
           <span
-            class="badge badge-ghost border-transparent hover:badge-ghost hover:bg-secondary/10 align-middle font-bold transition-all duration-300 hover:text-secondary"
+            class="badge badge-ghost border-transparent hover:bg-secondary/10 align-middle font-bold transition-all duration-300 hover:text-secondary"
           >
             {truncateMiddle(segment.name)}
           </span>
         {:else if segment.label}
           <span
-            class="badge badge-ghost border-transparent hover:badge-ghost hover:bg-secondary/10 align-middle transition-all duration-300 hover:text-secondary"
+            class="badge badge-ghost border-transparent hover:bg-secondary/10 align-middle transition-all duration-300 hover:text-secondary group"
           >
             <span class="font-bold">{segment.label}:</span>
             {#if segment.loading}
               <span class="loading loading-dots loading-sm mx-5"></span>
             {:else}
-              {truncateMiddle(segment.name)}
+              <span>{truncateMiddle(segment.name)}</span>
+              <button
+                on:click|preventDefault|stopPropagation={() =>
+                  copyToClipboard(segment.name, i)}
+                class="ml-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:text-primary cursor-pointer"
+                title="Copy"
+                aria-label="Copy {segment.name}"
+              >
+                <i
+                  class="fa {copiedIndex === i
+                    ? 'fa-solid'
+                    : 'fa-regular'} fa-copy text-xs"
+                ></i>
+              </button>
             {/if}
           </span>
         {:else}
           <span
-            class="badge badge-ghost border-transparent hover:badge-ghost hover:bg-secondary/10 align-middle font-bold transition-all duration-300 hover:text-secondary"
+            class="badge badge-ghost border-transparent hover:bg-secondary/10 align-middle font-bold transition-all duration-300 hover:text-secondary"
           >
             {truncateMiddle(segment.name)}
           </span>
@@ -82,13 +112,26 @@
           </span>
         {:else if segment.label}
           <span
-            class="badge badge-ghost border-transparent align-middle bg-transparent text-base-content/80"
+            class="badge badge-ghost border-transparent align-middle bg-transparent text-base-content/80 group"
           >
             <span class="font-bold">{segment.label}:</span>
             {#if segment.loading}
               <span class="loading loading-dots loading-sm mx-5"></span>
             {:else}
-              {truncateMiddle(segment.name)}
+              <span>{truncateMiddle(segment.name)}</span>
+              <button
+                on:click|stopPropagation={() =>
+                  copyToClipboard(segment.name, i)}
+                class="ml-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:text-primary cursor-pointer"
+                title="Copy"
+                aria-label="Copy {segment.name}"
+              >
+                <i
+                  class="fa {copiedIndex === i
+                    ? 'fa-solid'
+                    : 'fa-regular'} fa-copy text-xs"
+                ></i>
+              </button>
             {/if}
           </span>
         {:else}

@@ -119,9 +119,9 @@ cd mongodhara
 
 # Deploy with custom MongoDB URI and images
 helm install mongodhara ./helm-chart \
-  --set backend.image.repository=mongodhara/backend \
+  --set backend.image.repository=mongodhara/api \
   --set backend.image.tag=1.0.0 \
-  --set frontend.image.repository=mongodhara/frontend \
+  --set frontend.image.repository=mongodhara/web \
   --set frontend.image.tag=1.0.0 \
   --set backend.env[0].value="mongodb://your-mongo-host:27017/yourdb"
 ```
@@ -136,13 +136,47 @@ Build and push Docker images:
 
 ```bash
 # Backend
-docker build -f dockerfiles/backend.Dockerfile -t your-registry.com/mongodhara/backend:1.0.0 .
-docker push your-registry.com/mongodhara/backend:1.0.0
+docker build -f dockerfiles/backend.Dockerfile -t your-registry.com/mongodhara/api:1.0.0 .
+docker push your-registry.com/mongodhara/api:1.0.0
 
 # Frontend
-docker build -f dockerfiles/frontend.Dockerfile -t your-registry.com/mongodhara/frontend:1.0.0 .
-docker push your-registry.com/mongodhara/frontend:1.0.0
+docker build -f dockerfiles/frontend.Dockerfile -t your-registry.com/mongodhara/web:1.0.0 .
+docker push your-registry.com/mongodhara/web:1.0.0
 ```
+
+---
+
+## 📦 Published Packages
+
+After publishing (triggered by pushes to `release/**` branches), you can use the pre-built artifacts from GitHub Container Registry (GHCR).
+
+### Helm Chart
+
+Install the published Helm chart directly from GHCR:
+
+```bash
+# Install the latest version
+helm install my-mongodhara oci://ghcr.io/sensoumya/mongodhara
+
+# Or install a specific version
+helm install my-mongodhara oci://ghcr.io/sensoumya/mongodhara --version <chart-version>
+```
+
+> 📋 **View Packages**: [GitHub Packages](https://github.com/sensoumya/mongodhara/pkgs/container/mongodhara)
+
+### Docker Images
+
+Pull the published Docker images:
+
+```bash
+# Backend API
+docker pull ghcr.io/sensoumya/mongodhara/api:<branch>-<short-sha>
+
+# Frontend Web UI
+docker pull ghcr.io/sensoumya/mongodhara/web:<branch>-<short-sha>
+```
+
+> 📋 **View Images**: [API Package](https://github.com/sensoumya/mongodhara/pkgs/container/mongodhara%2Fapi) | [Web Package](https://github.com/sensoumya/mongodhara/pkgs/container/mongodhara%2Fweb)
 
 ---
 

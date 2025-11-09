@@ -16,7 +16,7 @@ function url(path: string): string {
 // Temporary testing configuration - all API calls use admin auth
 function getDefaultHeaders(additionalHeaders?: Record<string, string>): Record<string, string> {
   return {
-    // "X-Auth-Request-Email": "admin@company.com",
+    //"X-Auth-Request-Email": "admin@company.com",
     ...additionalHeaders
   };
 }

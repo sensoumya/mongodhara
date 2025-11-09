@@ -317,7 +317,7 @@ frontend:
 # my-values.yaml
 backend:
   image:
-    repository: myregistry/mongodhara-backend
+    repository: myregistry/mongodhara-api
     tag: "2.1.0"
 
   mongoUri:
@@ -352,7 +352,7 @@ backend:
 
 frontend:
   image:
-    repository: myregistry/mongodhara-frontend
+    repository: myregistry/mongodhara-web
     tag: "2.1.0"
 
   resources:
@@ -494,10 +494,10 @@ kubectl get pods -l app.kubernetes.io/instance=mongodhara
 
 ```bash
 # Backend
-kubectl logs -f deployment/mongodhara-backend
+kubectl logs -f deployment/mongodhara-api
 
 # Frontend
-kubectl logs -f deployment/mongodhara-frontend
+kubectl logs -f deployment/mongodhara-web
 ```
 
 ### Port Forward for Local Testing
@@ -524,10 +524,10 @@ kubectl logs deployment/mongodhara-mongodhara-services | grep -i mongo
 
 ```bash
 kubectl get ingress
-kubectl describe ingress mongodhara-frontend
-kubectl describe ingress mongodhara-backend
-kubectl describe ingress mongodhara-gridfs-upload
-kubectl describe ingress mongodhara-gridfs-download
+kubectl describe ingress mongodhara-web
+kubectl describe ingress mongodhara-api
+kubectl describe ingress mongodhara-api-upload
+kubectl describe ingress mongodhara-api-download
 ```
 
 **Rate limiting issues**: Check if requests are being throttled by inspecting ingress logs or adjust rate limits in `values.yaml` for specific ingress resources

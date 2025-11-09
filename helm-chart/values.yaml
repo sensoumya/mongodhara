@@ -35,7 +35,7 @@ backend:
   replicaCount: 1
   
   image:
-    repository: mongodhara/backend
+    repository: mongodhara/api
     pullPolicy: IfNotPresent
     tag: ""
   
@@ -128,7 +128,7 @@ frontend:
   replicaCount: 1
   
   image:
-    repository: mongodhara/frontend
+    repository: mongodhara/web
     pullPolicy: IfNotPresent
     tag: ""
   
