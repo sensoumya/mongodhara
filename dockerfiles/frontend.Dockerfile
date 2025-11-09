@@ -1,5 +1,5 @@
 # Stage 1: Build the SvelteKit application
-FROM node:20 AS builder
+FROM node:24 AS builder
 
 WORKDIR /app
 
@@ -14,7 +14,7 @@ COPY frontend/ .
 RUN npm run build
 
 # Stage 2: Create the runtime image
-FROM node:20-slim
+FROM node:24-slim
 
 WORKDIR /app
 

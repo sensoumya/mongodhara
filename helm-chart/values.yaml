@@ -35,9 +35,9 @@ backend:
   replicaCount: 1
   
   image:
-    repository: mongodhara/api
+    repository: ghcr.io/sensoumya/mongodhara/api
     pullPolicy: IfNotPresent
-    tag: ""
+    tag: "2.2.0"
   
   nameOverride: ""
   fullnameOverride: ""
@@ -49,9 +49,33 @@ backend:
   
   podAnnotations: {}
   
-  podSecurityContext: {}
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10101
+    runAsGroup: 10101
+    fsGroup: 10101
+    seccompProfile:
+      type: RuntimeDefault
   
-  securityContext: {}
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false  # Set to true if your app supports it
+    runAsNonRoot: true
+    runAsUser: 10101
+    runAsGroup: 10101
+    capabilities:
+      drop:
+        - ALL
+  
+  initContainerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 10101
+    runAsGroup: 10101
+    capabilities:
+      drop:
+        - ALL
   
   service:
     type: ClusterIP
@@ -128,9 +152,9 @@ frontend:
   replicaCount: 1
   
   image:
-    repository: mongodhara/web
+    repository: ghcr.io/sensoumya/mongodhara/web
     pullPolicy: IfNotPresent
-    tag: ""
+    tag: "2.2.0"
   
   nameOverride: ""
   fullnameOverride: ""
@@ -142,9 +166,23 @@ frontend:
   
   podAnnotations: {}
   
-  podSecurityContext: {}
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10101
+    runAsGroup: 10101
+    fsGroup: 10101
+    seccompProfile:
+      type: RuntimeDefault
   
-  securityContext: {}
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false  # Set to true if your app supports it
+    runAsNonRoot: true
+    runAsUser: 10101
+    runAsGroup: 10101
+    capabilities:
+      drop:
+        - ALL
   
   service:
     type: ClusterIP

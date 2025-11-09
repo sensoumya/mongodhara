@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -27,6 +27,22 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
+
+      - name: Extract version from branch
+        id: extract-version
+        run: |
+          if [[ $GITHUB_REF_NAME =~ ^release/(.+)$ ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+            # Remove 'v' prefix if present
+            VERSION="${VERSION#v}"
+            # Add .0 if no patch version exists
+            if [[ $VERSION =~ ^[0-9]+\.[0-9]+$ ]]; then
+              VERSION="${VERSION}.0"
+            fi
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "version=latest" >> $GITHUB_OUTPUT
+          fi
 
       - name: Extract metadata for backend image
         id: meta-backend
@@ -38,9 +54,10 @@ jobs:
             type=ref,event=pr
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.extract-version.outputs.version }}
 
       - name: Build and push backend Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: dockerfiles/backend.Dockerfile
@@ -58,7 +75,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -66,6 +83,22 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
+
+      - name: Extract version from branch
+        id: extract-version-frontend
+        run: |
+          if [[ $GITHUB_REF_NAME =~ ^release/(.+)$ ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+            # Remove 'v' prefix if present
+            VERSION="${VERSION#v}"
+            # Add .0 if no patch version exists
+            if [[ $VERSION =~ ^[0-9]+\.[0-9]+$ ]]; then
+              VERSION="${VERSION}.0"
+            fi
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "version=latest" >> $GITHUB_OUTPUT
+          fi
 
       - name: Extract metadata for frontend image
         id: meta-frontend
@@ -77,9 +110,10 @@ jobs:
             type=ref,event=pr
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.extract-version-frontend.outputs.version }}
 
       - name: Build and push frontend Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: dockerfiles/frontend.Dockerfile
@@ -97,7 +131,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
