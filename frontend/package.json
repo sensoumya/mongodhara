@@ -15,7 +15,7 @@
         "@sveltejs/kit": "^2.48.4",
         "@sveltejs/vite-plugin-svelte": "^6.0.0",
         "autoprefixer": "^10.4.21",
-        "daisyui": "^5.1.7",
+        "daisyui": "^5.5.5",
         "jsonlint-mod": "^1.7.6",
         "postcss": "^8.5.6",
         "svelte": "^5.0.0",
