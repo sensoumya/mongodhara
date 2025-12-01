@@ -18,7 +18,7 @@
         "daisyui": "^5.1.7",
         "jsonlint-mod": "^1.7.6",
         "postcss": "^8.5.6",
-        "svelte": "^5.0.0",
+        "svelte": "^5.45.2",
         "svelte-check": "^4.0.0",
         "tailwindcss": "^4.1.13",
         "typescript": "^5.0.0",
