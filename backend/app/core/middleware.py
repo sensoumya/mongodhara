@@ -244,7 +244,7 @@ class PathDecodingMiddleware(BaseHTTPMiddleware):
         # Try URL-safe decoding first (RFC 4648 Section 5)
         # This handles - and _ characters instead of + and /
         try:    
-            #time.sleep(1)   # to simulate real world delay
+            # time.sleep(1)   # to simulate real world delay
             return base64.urlsafe_b64decode(data)
         except (binascii.Error, ValueError):
             # Fallback to standard base64 if URL-safe fails

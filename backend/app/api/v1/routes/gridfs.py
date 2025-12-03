@@ -2,7 +2,16 @@ import json
 from typing import Optional
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+)
 from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorGridFSBucket
 
@@ -20,6 +29,7 @@ from app.dependencies.auth import (
     require_write_db,
 )
 from app.dependencies.models.responses import (
+    DocumentQueryResponse,
     GridFSBucketListResponse,
     GridFSBucketStatsResponse,
     GridFSDeleteResponse,
@@ -224,37 +234,45 @@ async def stream_upload_to_gridfs(
         raise e
 
 
-@router.get(
-    "/db/{db}/gridfs/{bucket_name}/files",
-    summary="List files in a specific GridFS bucket",
+# Removed GET listing endpoint in favor of POST JSON filter at /files/query
+
+
+@router.post(
+    "/db/{db}/gridfs/{bucket_name}/files/query",
+    summary="Query GridFS files (supports Mongo-style JSON filter)",
     tags=["GridFS File Storage"],
     response_model=GridFSFileListResponse,
 )
-async def list_files_in_bucket(
+async def query_files_in_bucket(
     db: str,
     bucket_name: str,
-    search: Optional[str] = Query(
-        None, description="Search for files containing this string in filename"
+    body: dict = Body(
+        default={},
+        description="MongoDB filter query as JSON for GridFS .files collection",
     ),
+    sort_field: Optional[str] = Query(None, description="Field to sort by"),
+    sort_order: int = Query(1, ge=-1, le=1, description="1=asc, -1=desc"),
     page: int = Query(1, gt=0, description="Page number"),
     page_size: int = Query(10, le=100, description="Number of files per page"),
-    user = Depends(require_read_db("db")),  # RBAC: Require read permission
+    user = Depends(require_read_db("db")),
 ):
-    # Validate database name for access
     validate_database_name_for_access(db)
-
-    # Validate bucket name for access
     validate_collection_name_for_access(bucket_name)
 
     try:
-        return await mongo.list_files_in_bucket(db, bucket_name, search, page, page_size)
+        filter = body.get("filter", {})
+        return await mongo.query_files_in_bucket(
+            db, bucket_name, filter, sort_field, sort_order, page, page_size
+        )
+    except ValueError as e:
+        logger.error(f"Invalid request format for GridFS query: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="Invalid request format")
     except Exception as e:
         logger.error(
-            f"Failed to list GridFS files in bucket '{bucket_name}' in DB '{db}': {e}",
+            f"Failed to query GridFS files in bucket '{bucket_name}' in DB '{db}': {e}",
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Failed to list files")
-        raise HTTPException(status_code=500, detail="Failed to list files")
+        raise HTTPException(status_code=500, detail=f"Failed to query files in {bucket_name}")
 
 
 @router.get(

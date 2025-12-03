@@ -24,6 +24,8 @@
   let showCreateModal = false;
   let showEditModal = false;
   let userToEdit: any = null;
+  let isCreating = false;
+  let isUpdating = false;
 
   // Form data
   let userEmails: string[] = [];
@@ -37,6 +39,7 @@
 
   // Available groups (fetch on mount)
   let availableGroups: any[] = [];
+  let isLoadingGroups: boolean = false;
 
   $: totalPages = Math.ceil(usersResponse.total / pageSize);
 
@@ -81,12 +84,16 @@
    * Fetch available groups for dropdown
    */
   async function fetchAvailableGroups() {
+    if (isLoadingGroups || availableGroups.length > 0) return;
+    isLoadingGroups = true;
     try {
       availableGroups = await api.apiGet<any[]>(
         "/admin/groups?skip=0&limit=1000"
       );
     } catch (e) {
       addNotification("Failed to load available groups", "error");
+    } finally {
+      isLoadingGroups = false;
     }
   }
 
@@ -94,18 +101,19 @@
    * Show create user modal
    */
   export async function showCreateUserModal() {
-    await fetchAvailableGroups();
     userEmails = [];
     selectedRole = "user";
     selectedGroups = [];
     customGrants = {};
     showCreateModal = true;
+    fetchAvailableGroups(); // Load groups in background
   }
 
   /**
    * Create new user permission
    */
   async function createUser() {
+    isCreating = true;
     try {
       // Create users in batch
       for (const email of userEmails) {
@@ -125,6 +133,8 @@
       await fetchUsers(true);
     } catch (e) {
       addNotification(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      isCreating = false;
     }
   }
 
@@ -146,6 +156,7 @@
    */
   async function updateUser() {
     if (!userToEdit) return;
+    isUpdating = true;
 
     try {
       await api.apiPut(`/admin/users/${userToEdit.email}`, {
@@ -163,6 +174,8 @@
       await fetchUsers(true);
     } catch (e) {
       addNotification(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      isUpdating = false;
     }
   }
 
@@ -360,7 +373,9 @@
               label: g.name,
               description: g.description || "",
             }))}
-            placeholder="Select groups..."
+            placeholder={isLoadingGroups
+              ? "Loading groups..."
+              : "Select groups..."}
           />
         </div>
       </div>
@@ -373,16 +388,26 @@
       </div>
     </div>
     <div class="modal-action mt-4">
-      <button class="btn" on:click={() => (showCreateModal = false)}
-        >Cancel</button
+      <button
+        class="btn"
+        on:click={() => (showCreateModal = false)}
+        disabled={isCreating}>Cancel</button
       >
       <button
-        class="btn btn-primary"
+        class="btn btn-primary min-w-32 {isCreating
+          ? '!bg-primary !border-primary'
+          : ''}"
         on:click={createUser}
-        disabled={userEmails.length === 0 ||
+        disabled={isCreating ||
+          userEmails.length === 0 ||
           (selectedRole === "user" && selectedGroups.length === 0)}
       >
-        Add User
+        {#if isCreating}
+          <span class="loading loading-ring loading-sm !text-primary-content"
+          ></span>
+        {:else}
+          Add User
+        {/if}
       </button>
     </div>
   </div>
@@ -425,7 +450,9 @@
               label: g.name,
               description: g.description || "",
             }))}
-            placeholder="Select groups..."
+            placeholder={isLoadingGroups
+              ? "Loading groups..."
+              : "Select groups..."}
           />
         </div>
       </div>
@@ -448,11 +475,24 @@
       </div>
     </div>
     <div class="modal-action mt-4">
-      <button class="btn" on:click={() => (showEditModal = false)}
-        >Cancel</button
+      <button
+        class="btn"
+        on:click={() => (showEditModal = false)}
+        disabled={isUpdating}>Cancel</button
       >
-      <button class="btn btn-primary" on:click={updateUser}>
-        Update User
+      <button
+        class="btn btn-primary min-w-32 {isUpdating
+          ? '!bg-primary !border-primary'
+          : ''}"
+        on:click={updateUser}
+        disabled={isUpdating}
+      >
+        {#if isUpdating}
+          <span class="loading loading-ring loading-sm !text-primary-content"
+          ></span>
+        {:else}
+          Update User
+        {/if}
       </button>
     </div>
   </div>

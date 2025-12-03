@@ -78,7 +78,7 @@
               <button
                 on:click|preventDefault|stopPropagation={() =>
                   copyToClipboard(segment.name, i)}
-                class="p-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer"
+                class="p-0 cursor-pointer text-base-content/40 group-hover:text-secondary/60 hover:!text-secondary transition-colors duration-200"
                 title="Copy"
                 aria-label="Copy {segment.name}"
               >
@@ -122,7 +122,7 @@
               <button
                 on:click|stopPropagation={() =>
                   copyToClipboard(segment.name, i)}
-                class="p-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer"
+                class="p-0 cursor-pointer text-base-content/40 hover:text-base-content transition-colors duration-200"
                 title="Copy"
                 aria-label="Copy {segment.name}"
               >

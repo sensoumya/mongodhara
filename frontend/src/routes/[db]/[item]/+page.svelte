@@ -370,14 +370,38 @@
    * Fetches files from a GridFS bucket.
    */
   async function fetchGridFSFiles() {
-    // For GridFS, we'll use the existing documents structure but call the GridFS API
+    // Mirror documents query: POST with JSON filter + pagination/sorting
     const queryParams = new URLSearchParams();
     queryParams.append("page", currentPage.toString());
     queryParams.append("page_size", pageSize.toString());
+    if (sortField !== null && sortOrder !== null) {
+      queryParams.append("sort_field", sortField);
+      queryParams.append("sort_order", sortOrder.toString());
+    }
+
+    let parsedQuery = {};
+    let hasQuery = false;
+    if (queryTerm.trim() !== "") {
+      try {
+        parsedQuery = JSON.parse(queryTerm);
+        if (Object.keys(parsedQuery).length > 0) {
+          hasQuery = true;
+        }
+      } catch (e) {
+        // For GridFS, allow simple string search fallback on filename
+        parsedQuery = { filename: { $regex: queryTerm.trim(), $options: "i" } };
+        hasQuery = true;
+      }
+    }
+
+    const body = {
+      filter: hasQuery ? parsedQuery : {},
+    };
 
     try {
-      const response = await api.apiGet(
-        `/db/${db}/gridfs/${item}/files?${queryParams.toString()}`
+      const response = await api.apiPost(
+        `/db/${db}/gridfs/${item}/files/query?${queryParams.toString()}`,
+        body
       );
       if (response && response.data) {
         // Extract display names from API response
@@ -390,9 +414,9 @@
 
         documentsResponse = {
           docs: response.data,
-          total: response.total || response.data.length,
-          page: response.page || currentPage,
-          page_size: response.page_size || pageSize,
+          total: response.total ?? response.data.length ?? 0,
+          page: response.page ?? currentPage,
+          page_size: response.page_size ?? pageSize,
         };
         allKeys = extractAllKeys(documentsResponse.docs);
       } else {

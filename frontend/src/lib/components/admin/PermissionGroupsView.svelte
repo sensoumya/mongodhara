@@ -22,6 +22,8 @@
   let showCreateModal = false;
   let showEditModal = false;
   let groupToEdit: any = null;
+  let isCreating = false;
+  let isUpdating = false;
 
   // Form data
   let newGroupName: string = "";
@@ -86,6 +88,7 @@
    * Create new permission group
    */
   async function createGroup() {
+    isCreating = true;
     try {
       await api.apiPost("/admin/groups", {
         name: newGroupName,
@@ -101,6 +104,8 @@
       await fetchGroups(true);
     } catch (e) {
       addNotification(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      isCreating = false;
     }
   }
 
@@ -119,6 +124,7 @@
    */
   async function updateGroup() {
     if (!groupToEdit) return;
+    isUpdating = true;
 
     try {
       await api.apiPut(`/admin/groups/${groupToEdit.name}`, {
@@ -134,6 +140,8 @@
       await fetchGroups(true);
     } catch (e) {
       addNotification(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      isUpdating = false;
     }
   }
 
@@ -293,15 +301,24 @@
     />
   </div>
   <div class="modal-action">
-    <button class="btn" on:click={() => (showCreateModal = false)}
-      >Cancel</button
+    <button
+      class="btn"
+      on:click={() => (showCreateModal = false)}
+      disabled={isCreating}>Cancel</button
     >
     <button
-      class="btn btn-primary"
+      class="btn btn-primary min-w-32 {isCreating
+        ? '!bg-primary !border-primary'
+        : ''}"
       on:click={createGroup}
-      disabled={!newGroupName || !newGroupDescription}
+      disabled={isCreating || !newGroupName || !newGroupDescription}
     >
-      Create Group
+      {#if isCreating}
+        <span class="loading loading-ring loading-sm !text-primary-content"
+        ></span>
+      {:else}
+        Create Group
+      {/if}
     </button>
   </div>
 </SimpleModal>
@@ -321,9 +338,24 @@
     />
   </div>
   <div class="modal-action">
-    <button class="btn" on:click={() => (showEditModal = false)}>Cancel</button>
-    <button class="btn btn-primary" on:click={updateGroup}>
-      Update Group
+    <button
+      class="btn"
+      on:click={() => (showEditModal = false)}
+      disabled={isUpdating}>Cancel</button
+    >
+    <button
+      class="btn btn-primary min-w-32 {isUpdating
+        ? '!bg-primary !border-primary'
+        : ''}"
+      on:click={updateGroup}
+      disabled={isUpdating}
+    >
+      {#if isUpdating}
+        <span class="loading loading-ring loading-sm !text-primary-content"
+        ></span>
+      {:else}
+        Update Group
+      {/if}
     </button>
   </div>
 </SimpleModal>

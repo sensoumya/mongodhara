@@ -9,6 +9,7 @@
   import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
   import { lintGutter, linter } from "@codemirror/lint";
   import { search, searchKeymap } from "@codemirror/search";
+  import { EditorState } from "@codemirror/state";
   import { EditorView, keymap } from "@codemirror/view";
   import { tags } from "@lezer/highlight";
   import { basicSetup } from "codemirror";
@@ -226,7 +227,8 @@
 
     // Add readOnly extension if readOnly prop is true
     if (readOnly) {
-      extensions.push(EditorView.editable.of(false));
+      // Make the document immutable but keep keymaps and panels active (search stays enabled)
+      extensions.push(EditorState.readOnly.of(true));
     } else {
       extensions.push(
         EditorView.updateListener.of((update) => {
@@ -360,7 +362,7 @@
 </script>
 
 <div
-  class="fixed inset-0 bg-base-300/50 transition-opacity duration-200"
+  class="fixed inset-0 bg-base-300/50 transition-opacity duration-200 z-[9998]"
   class:pointer-events-none={!isOpen}
   class:opacity-0={!isOpen}
   on:click={handleBackdropClick}
@@ -373,7 +375,7 @@
       ? 'translateX(0) scale(1)'
       : 'translateX(100%) scale(0.96)'}; transition: {isResizing
       ? 'none'
-      : 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease-out'};"
+      : 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), width 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease-out'};"
     bind:this={panelElement}
     on:click|stopPropagation
   >
@@ -476,7 +478,7 @@
 
 {#if showAlert}
   <div
-    class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[100]"
+    class="fixed inset-0 bg-base-300/50 flex items-center justify-center z-[100]"
   >
     <div
       class="bg-base-100 rounded-lg p-6 shadow-xl max-w-sm mx-auto text-center"

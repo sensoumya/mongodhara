@@ -16,6 +16,7 @@
   export let loading: boolean = false;
   export let pageSize: number = 16;
   export let isLoading: boolean = false;
+  export let onDataLoaded: (() => void) | undefined = undefined;
   let error: boolean = false;
 
   export let gridfsResponse: PaginatedGridFSBuckets = {
@@ -28,6 +29,11 @@
     page: 1,
     page_size: 16,
   };
+
+  // Track previous fetch parameters to detect when we need to refetch
+  let previousPage: number = 0;
+  let previousPageSize: number = 0;
+  let previousSearchTerm: string = "";
 
   let showDeleteBucketModal = false;
   let bucketToDelete: string | null = null;
@@ -139,10 +145,21 @@
    * Fetches the list of GridFS buckets for the current database.
    */
   export async function fetchGridFSBuckets(forceRefresh: boolean = false) {
-    // Skip if data is already loaded and not forcing refresh (for tab switching optimization)
-    if (!forceRefresh && gridfsResponse.buckets.length > 0) {
+    // Determine if we need to fetch based on changed parameters
+    const paramsChanged =
+      previousPage !== currentPage ||
+      previousPageSize !== pageSize ||
+      previousSearchTerm !== searchTerm;
+
+    // Skip if data is already loaded and not forcing refresh and params haven't changed
+    if (!forceRefresh && !paramsChanged && gridfsResponse.buckets.length > 0) {
       return;
     }
+
+    // Update previous parameters
+    previousPage = currentPage;
+    previousPageSize = pageSize;
+    previousSearchTerm = searchTerm;
 
     isLoading = true;
     error = false;
@@ -160,6 +177,10 @@
         `/db/${db}/gridfs?${query.toString()}`
       );
       gridfsResponse = response;
+      // Notify parent that data has been loaded
+      if (onDataLoaded) {
+        onDataLoaded();
+      }
     } catch (e) {
       error = true;
       addNotification(e instanceof Error ? e.message : String(e), "error");
