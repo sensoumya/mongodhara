@@ -285,6 +285,85 @@ class GridFSService(BaseMongoService):
             "page_size": page_size,
         }
 
+    async def query_files_in_bucket(
+        self,
+        db_name: str,
+        bucket_name: str,
+        filter: dict | None = None,
+        sort_field: str | None = None,
+        sort_order: int = 1,
+        page: int = 1,
+        page_size: int = 10,
+    ):
+        """Query files in a GridFS bucket using a MongoDB filter with pagination and optional sorting.
+        Supports matching on `filename`, `metadata.*`, and other fields present in the `.files` documents.
+        """
+        files_collection = f"{bucket_name}.files"
+        collection = self.client[db_name][files_collection]
+
+        match_stage = filter or {}
+
+        pipeline = []
+        if match_stage:
+            pipeline.append({"$match": match_stage})
+
+        sort_stage = {"uploadDate": -1}
+        if sort_field:
+            sort_stage = {sort_field: sort_order}
+
+        pipeline.append({
+            "$facet": {
+                "total": [{"$count": "count"}],
+                "data": [
+                    {"$sort": sort_stage},
+                    {"$skip": (page - 1) * page_size},
+                    {"$limit": page_size},
+                    {"$project": {
+                        "_id": {"$toString": "$_id"},
+                        "filename": 1,
+                        "contentType": 1,
+                        "length": 1,
+                        "uploadDate": 1,
+                        "metadata": 1
+                    }}
+                ]
+            }
+        })
+
+        result = await collection.aggregate(pipeline).to_list()
+        if result:
+            total = result[0]["total"][0]["count"] if result[0]["total"] else 0
+            files_data = result[0]["data"]
+            files = [
+                {
+                    "_id": f["_id"],
+                    "filename": f.get("filename"),
+                    "content_type": f.get("contentType"),
+                    "length": f.get("length"),
+                    "upload_date": f.get("uploadDate"),
+                    "metadata": f.get("metadata", {}),
+                }
+                for f in files_data
+            ]
+        else:
+            total = 0
+            files = []
+
+        return {
+            "database": {
+                "name": db_name,
+                "opaque_id": encode_opaque_id(db_name) if ENABLE_OPAQUE_IDS else None
+            },
+            "bucket": {
+                "bucket_name": bucket_name,
+                "opaque_id": encode_opaque_id(bucket_name) if ENABLE_OPAQUE_IDS else None
+            },
+            "data": files,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }
+
     async def get_file_metadata_from_bucket(self, db_name, bucket_name, file_id):
         """Get file metadata from a specific bucket without downloading the content"""
         try:

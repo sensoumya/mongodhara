@@ -94,7 +94,7 @@
           class="absolute inset-0 flex items-center justify-center"
           transition:fade={{ duration: 200 }}
         >
-          <span class="loading loading-ring loading-sm text-primary"></span>
+          <span class="loading loading-ring loading-sm text-info"></span>
         </div>
       {:else if displayData && typeof displayData === "object"}
         <div

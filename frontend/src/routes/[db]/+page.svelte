@@ -38,6 +38,16 @@
       ? parseInt(localStorage.getItem("pageSize_collections") || "20")
       : 20;
 
+  // Separate state for each tab to preserve pagination when switching
+  let collectionsPage: number = 1;
+  let collectionsSearchTerm: string = "";
+  let gridfsPage: number = 1;
+  let gridfsSearchTerm: string = "";
+
+  // Track if each tab has loaded data to avoid unnecessary API calls on tab switch
+  let collectionsLoaded: boolean = false;
+  let gridfsLoaded: boolean = false;
+
   // Save pageSize to localStorage whenever it changes
   $: if (typeof window !== "undefined") {
     localStorage.setItem("pageSize_collections", pageSize.toString());
@@ -77,18 +87,38 @@
    */
   function handleCarouselChange(event: CustomEvent<{ index: number }>) {
     const newIndex = event.detail.index;
+
+    // Save current tab's state before switching
+    if (carouselIndex === 0) {
+      collectionsPage = currentPage;
+      collectionsSearchTerm = searchTerm;
+    } else {
+      gridfsPage = currentPage;
+      gridfsSearchTerm = searchTerm;
+    }
+
     carouselIndex = newIndex;
-    currentPage = 1;
-    searchTerm = "";
+
+    // Restore the new tab's state
+    if (newIndex === 0) {
+      currentPage = collectionsPage;
+      searchTerm = collectionsSearchTerm;
+    } else {
+      currentPage = gridfsPage;
+      searchTerm = gridfsSearchTerm;
+    }
 
     // Update URL with appropriate type parameter
     const newType = newIndex === 0 ? "collection" : "gridfs";
     goto(`?type=${newType}`, { replaceState: true });
 
-    // Use setTimeout to ensure component is mounted before fetching data
-    setTimeout(() => {
-      fetchData();
-    }, 0);
+    // Only fetch data if the tab hasn't been loaded yet
+    const tabHasData = newIndex === 0 ? collectionsLoaded : gridfsLoaded;
+    if (!tabHasData) {
+      setTimeout(() => {
+        fetchData(false);
+      }, 0);
+    }
   }
 
   /**
@@ -101,6 +131,20 @@
       searchTerm = event.detail.term;
     }
     currentPage = 1;
+
+    // Update the current tab's state
+    if (carouselIndex === 0) {
+      collectionsPage = 1;
+      collectionsSearchTerm = searchTerm;
+      // Reset loaded state when search changes
+      collectionsLoaded = false;
+    } else {
+      gridfsPage = 1;
+      gridfsSearchTerm = searchTerm;
+      // Reset loaded state when search changes
+      gridfsLoaded = false;
+    }
+
     fetchData();
   }
 
@@ -109,11 +153,33 @@
    */
   function handleSearchSubmit() {
     currentPage = 1;
+
+    // Update the current tab's state
+    if (carouselIndex === 0) {
+      collectionsPage = 1;
+      collectionsSearchTerm = searchTerm;
+      // Reset loaded state when search changes
+      collectionsLoaded = false;
+    } else {
+      gridfsPage = 1;
+      gridfsSearchTerm = searchTerm;
+      // Reset loaded state when search changes
+      gridfsLoaded = false;
+    }
+
     fetchData(true); // Always force refresh for search
   }
 
   function handlePageChange(event: CustomEvent<{ page: number }>) {
     currentPage = event.detail.page;
+
+    // Update the current tab's state
+    if (carouselIndex === 0) {
+      collectionsPage = currentPage;
+    } else {
+      gridfsPage = currentPage;
+    }
+
     fetchData(false); // Don't force refresh for pagination
   }
 
@@ -122,6 +188,14 @@
    */
   function changePage(page: number) {
     currentPage = page;
+
+    // Update the current tab's state
+    if (carouselIndex === 0) {
+      collectionsPage = currentPage;
+    } else {
+      gridfsPage = currentPage;
+    }
+
     fetchData(false); // Don't force refresh for pagination
   }
 
@@ -144,6 +218,17 @@
       collectionsView?.fetchCollections(forceRefresh);
     } else {
       gridfsView?.fetchGridFSBuckets(forceRefresh);
+    }
+  }
+
+  /**
+   * Called by child components when data is successfully loaded
+   */
+  function handleDataLoaded() {
+    if (carouselIndex === 0) {
+      collectionsLoaded = true;
+    } else {
+      gridfsLoaded = true;
     }
   }
 
@@ -180,7 +265,6 @@
       >
         <div class="flex-1">
           <Breadcrumb
-            showBackButton={true}
             segments={[
               { name: "Home", isHome: true, href: `${base}/` },
               {
@@ -267,6 +351,7 @@
           {currentPage}
           {loading}
           {pageSize}
+          onDataLoaded={handleDataLoaded}
         />
       {:else}
         <GridFSView
@@ -279,6 +364,7 @@
           {currentPage}
           {loading}
           {pageSize}
+          onDataLoaded={handleDataLoaded}
         />
       {/if}
     </div>
@@ -294,6 +380,16 @@
       on:pageSizeChange={(e) => {
         pageSize = e.detail.pageSize;
         currentPage = 1;
+
+        // Update the current tab's state and reset loaded state
+        if (carouselIndex === 0) {
+          collectionsPage = 1;
+          collectionsLoaded = false;
+        } else {
+          gridfsPage = 1;
+          gridfsLoaded = false;
+        }
+
         fetchData(true); // Force refresh when page size changes
       }}
     />

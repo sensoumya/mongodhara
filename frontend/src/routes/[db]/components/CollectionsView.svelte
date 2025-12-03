@@ -6,7 +6,7 @@
   import StatsPopover from "$lib/components/StatsPopover.svelte";
   import * as api from "$lib/stores/api";
   import { addNotification } from "$lib/stores/notifications";
-  import type { PaginatedCollections } from "$lib/stores/types";
+  import type { Collection, PaginatedCollections } from "$lib/stores/types";
   import { onDestroy, onMount } from "svelte";
   import { fade } from "svelte/transition";
 
@@ -17,6 +17,7 @@
   export let loading: boolean = false;
   export let pageSize: number = 16;
   export let isLoading: boolean = false;
+  export let onDataLoaded: (() => void) | undefined = undefined;
   let error: boolean = false;
 
   export let collectionsResponse: PaginatedCollections = {
@@ -29,6 +30,11 @@
     page: 1,
     page_size: 16,
   };
+
+  // Track previous fetch parameters to detect when we need to refetch
+  let previousPage: number = 0;
+  let previousPageSize: number = 0;
+  let previousSearchTerm: string = "";
 
   let exportingCol: string | null = null;
   let showDeleteModal = false;
@@ -131,10 +137,25 @@
    * Fetches the list of collections for the current database.
    */
   export async function fetchCollections(forceRefresh: boolean = false) {
-    // Skip if data is already loaded and not forcing refresh (for tab switching optimization)
-    if (!forceRefresh && collectionsResponse.collections.length > 0) {
+    // Determine if we need to fetch based on changed parameters
+    const paramsChanged =
+      previousPage !== currentPage ||
+      previousPageSize !== pageSize ||
+      previousSearchTerm !== searchTerm;
+
+    // Skip if data is already loaded and not forcing refresh and params haven't changed
+    if (
+      !forceRefresh &&
+      !paramsChanged &&
+      collectionsResponse.collections.length > 0
+    ) {
       return;
     }
+
+    // Update previous parameters
+    previousPage = currentPage;
+    previousPageSize = pageSize;
+    previousSearchTerm = searchTerm;
 
     isLoading = true;
     error = false;
@@ -152,6 +173,10 @@
         `/db/${db}/col?${query.toString()}`
       );
       collectionsResponse = response;
+      // Notify parent that data has been loaded
+      if (onDataLoaded) {
+        onDataLoaded();
+      }
     } catch (e) {
       error = true;
       collectionsResponse = {
@@ -255,7 +280,6 @@
   async function handleExport(colOpaqueId: string, colName: string) {
     exportingCol = colName;
     try {
-      addNotification(`Exporting collection "${colName}"...`, "success");
       const response = await api.apiGet<any>(
         `/db/${db}/col/${colOpaqueId}/export`
       );
