@@ -7,6 +7,17 @@ html {
   scroll-behavior: smooth;
 }
 
+/* Slightly reduce base scale on desktops to avoid bloated appearance on Windows */
+:root {
+  font-size: 16px;
+}
+
+@media (min-width: 768px) {
+  :root {
+    font-size: 15px;
+  }
+}
+
 /* Headings and poppins utility */
 h1, h2, h3, h4, h5, h6, .poppins {
   font-family: 'Poppins', sans-serif;
