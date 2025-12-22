@@ -25,7 +25,7 @@
         "vite": "^7.2.7"
     },
     "dependencies": {
-        "@codemirror/commands": "^6.9.0",
+        "@codemirror/commands": "^6.10.1",
         "@codemirror/lang-json": "^6.0.2",
         "@codemirror/language": "^6.11.3",
         "@codemirror/lint": "^6.9.0",
