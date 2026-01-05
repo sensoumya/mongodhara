@@ -55,8 +55,6 @@ async def list_indexes(db: str, col: str, _=Depends(require_read_db("db"))):
             "indexes": indexes,
             "total": len(indexes)
         }
-        logger.warning(f"Invalid opaque ID in index list request for {db}.{col}: {e}")
-        raise HTTPException(status_code=400, detail="Invalid opaque ID")
     except Exception as e:
         logger.error(f"Failed to list indexes for {db}.{col}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to list indexes")
@@ -81,8 +79,6 @@ async def create_index(db: str, col: str, index_spec: IndexSpecModel, _=Depends(
             "keys": index_spec.keys,
             "options": index_spec.options or {}
         }
-        logger.warning(f"Invalid opaque ID in index create request for {db}.{col}: {e}")
-        raise HTTPException(status_code=400, detail="Invalid opaque ID")
     except Exception as e:
         logger.error(f"Failed to create index on {db}.{col}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to create index")
@@ -112,8 +108,6 @@ async def drop_index(db: str, col: str, index_name: str, _=Depends(require_write
             "message": f"Index '{index_name}' dropped successfully from {db}.{col}",
             "index_name": index_name
         }
-        logger.warning(f"Invalid opaque ID in index drop request for {db}.{col}: {e}")
-        raise HTTPException(status_code=400, detail="Invalid opaque ID")
     except Exception as e:
         logger.error(f"Failed to drop index '{index_name}' from {db}.{col}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to drop index")
@@ -149,8 +143,6 @@ async def get_index_info(db: str, col: str, index_name: str, _=Depends(require_r
         }
     except HTTPException:
         raise
-        logger.warning(f"Invalid opaque ID in index info request for {db}.{col}: {e}")
-        raise HTTPException(status_code=400, detail="Invalid opaque ID")
     except Exception as e:
         logger.error(f"Failed to get index info for '{index_name}' in {db}.{col}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to get index information")
@@ -188,8 +180,6 @@ async def create_text_index(
             "fields": fields,
             "language": language
         }
-        logger.warning(f"Invalid opaque ID in text index create request for {db}.{col}: {e}")
-        raise HTTPException(status_code=400, detail="Invalid opaque ID")
     except Exception as e:
         logger.error(f"Failed to create text index on {db}.{col}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to create text index")
@@ -219,8 +209,6 @@ async def get_index_stats(db: str, col: str, _=Depends(require_read_db("db"))):
             },
             "index_stats": stats
         }
-        logger.warning(f"Invalid opaque ID in index stats request for {db}.{col}: {e}")
-        raise HTTPException(status_code=400, detail="Invalid opaque ID")
     except Exception as e:
         logger.error(f"Failed to get index stats for {db}.{col}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to get index statistics")

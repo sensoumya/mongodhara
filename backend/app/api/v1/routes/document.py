@@ -176,8 +176,6 @@ async def update_document(db: str, col: str, doc_id: str, update: DocumentUpdate
     except ValueError as e:
         logger.error(f"Invalid document ID '{doc_id}': {e}", exc_info=True)
         raise HTTPException(status_code=400, detail="Invalid document ID")
-        # Let invalid opaque ID errors bubble up to the global handler
-        raise
     except Exception as e:
         logger.error(
             f"Failed to update document '{doc_id}' in {db}.{col}: {e}", exc_info=True
@@ -213,8 +211,6 @@ async def delete_document(db: str, col: str, doc_id: str, user = Depends(require
     except ValueError as e:
         logger.error(f"Invalid document ID '{doc_id}': {e}", exc_info=True)
         raise HTTPException(status_code=400, detail="Invalid document ID")
-        # Let invalid opaque ID errors bubble up to the global handler
-        raise
     except Exception as e:
         logger.error(
             f"Failed to delete document '{doc_id}' from {db}.{col}: {e}", exc_info=True
@@ -244,8 +240,6 @@ async def export_collection(db: str, col: str, user = Depends(require_read_db("d
 
     try:
         return {"documents": await mongo.export_collection(db, col)}
-        # Let invalid opaque ID errors bubble up to the global handler
-        raise
     except Exception as e:
         logger.error(f"Failed to export collection {db}.{col}: {e}", exc_info=True)
         # Provide more user-friendly error messages
@@ -329,8 +323,6 @@ async def import_documents(
     except ValueError as e:
         logger.error(f"Validation error during import: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
-        # Let invalid opaque ID errors bubble up to the global handler
-        raise
     except Exception as e:
         logger.error(f"Failed to import documents into {db}.{col}: {e}", exc_info=True)
         # Provide more user-friendly error messages
