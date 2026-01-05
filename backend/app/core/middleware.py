@@ -371,7 +371,6 @@ class PathDecodingMiddleware(BaseHTTPMiddleware):
         except Exception as e:
             logger.error(f"Error in path decoding middleware: {e}")
             # Continue with original path if any error occurs
-            pass
 
         response = await call_next(request)
         return response

@@ -167,12 +167,6 @@ async def create_text_index(
     validate_collection_name_for_access(col)
 
     try:
-        # Build text index specification
-        text_spec = {field: "text" for field in fields}
-        options = {"default_language": language}
-        if name:
-            options["name"] = name
-
         result = await mongo.create_text_index(db, col, fields, name, language)
         return {
             "message": f"Text index created successfully on {db}.{col}",

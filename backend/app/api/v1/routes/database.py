@@ -47,47 +47,47 @@ async def list_databases(
 
         # Filter databases based on user permissions
         from app.services.permission_service import permission_service
-        user_permissions = await permission_service.get_user_permission(user["email"])
 
         if not ENABLE_AUTHZ:
             # When authorization is disabled, show all databases
             filtered_databases = all_databases
             filtered_by_permissions = False
-        elif user_permissions and user_permissions.role == "admin":
-            # Admin role users can see all databases
-            filtered_databases = all_databases
-            filtered_by_permissions = False
-        elif user_permissions and user_permissions.groups:
-            # Regular users only see databases they have permissions for
-            filtered_databases = []
-            # Get all accessible databases for this user
-            accessible_dbs = set()
-            for group_name in user_permissions.groups:
-                group = await permission_service.get_permission_group(group_name)
-                if group:
-                    accessible_dbs.update(group.grants.keys())
-
-            # Also check custom grants
-            accessible_dbs.update(user_permissions.custom_grants.keys())
-
-            # Filter databases
-            for db_name in all_databases:
-                # Check for exact matches or wildcard
-                if db_name in accessible_dbs or "*" in accessible_dbs:
-                    filtered_databases.append(db_name)
-                else:
-                    # Check for pattern matches
-                    for db_pattern in accessible_dbs:
-                        if fnmatch.fnmatch(db_name, db_pattern):
-                            filtered_databases.append(db_name)
-                            break
-
-            filtered_databases = list(set(filtered_databases))
-            filtered_by_permissions = True
         else:
-            # No permissions found, return empty list
-            filtered_databases = []
-            filtered_by_permissions = True
+            # Get user permissions and resolved grants in one call
+            user_perm, final_grants = await permission_service.get_resolved_grants(user["email"])
+
+            if not user_perm:
+                # No permissions found, return empty list
+                filtered_databases = []
+                filtered_by_permissions = True
+            elif user_perm.role == "admin":
+                # Admin role users can see all databases
+                filtered_databases = all_databases
+                filtered_by_permissions = False
+            else:
+                # Regular users only see databases they have permissions for
+                # Optimize: Check wildcard first to avoid iterating through all databases
+                if "*" in final_grants and final_grants["*"].r:
+                    # User has wildcard read access - show all databases
+                    filtered_databases = all_databases
+                    filtered_by_permissions = False
+                else:
+                    # Pre-separate exact grants from patterns for performance
+                    exact_grants = {k: v for k, v in final_grants.items() if '*' not in k and '?' not in k}
+                    pattern_grants = {k: v for k, v in final_grants.items() if '*' in k or '?' in k}
+                    
+                    filtered_databases = []
+                    for db_name in all_databases:
+                        # Check exact match first (O(1) hash lookup)
+                        if db_name in exact_grants and exact_grants[db_name].r:
+                            filtered_databases.append(db_name)
+                        # Only check patterns if no exact match found
+                        elif pattern_grants:
+                            for pattern, grant in pattern_grants.items():
+                                if grant.r and fnmatch.fnmatch(db_name, pattern):
+                                    filtered_databases.append(db_name)
+                                    break
+                    filtered_by_permissions = True
         
         # Apply search filter
         if search:
@@ -108,8 +108,6 @@ async def list_databases(
             if ENABLE_OPAQUE_IDS:
                 db_info["opaque_id"] = encode_opaque_id(db_name)
             databases.append(db_info)
-            # if len(databases)>4:
-            #     break
 
         return {
             "databases": databases,
