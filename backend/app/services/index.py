@@ -145,6 +145,5 @@ class IndexService(BaseMongoService):
             # Fallback to basic index list
             return self.list_indexes(db_name, col_name)
 
-        return True
 
 index_service = IndexService()

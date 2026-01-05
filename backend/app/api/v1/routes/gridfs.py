@@ -29,7 +29,6 @@ from app.dependencies.auth import (
     require_write_db,
 )
 from app.dependencies.models.responses import (
-    DocumentQueryResponse,
     GridFSBucketListResponse,
     GridFSBucketStatsResponse,
     GridFSDeleteResponse,
@@ -269,7 +268,10 @@ async def query_files_in_bucket(
         raise HTTPException(status_code=400, detail="Invalid request format")
     except Exception as e:
         logger.error(
-            f"Failed to query GridFS files in bucket '{bucket_name}' in DB '{db}': {e}",
+            "Failed to query GridFS files in bucket '%s' in DB '%s': %s",
+            bucket_name,
+            db,
+            str(e),
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail=f"Failed to query files in {bucket_name}")
