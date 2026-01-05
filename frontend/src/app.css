@@ -7,14 +7,14 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Slightly reduce base scale on desktops to avoid bloated appearance on Windows */
-:root {
-  font-size: 16px;
+html.windows {
+  font-size: 90%;
 }
 
+ 
 @media (min-width: 768px) {
   :root {
-    font-size: 15px;
+    font-size: calc(15px * var(--os-zoom, 1.0));
   }
 }
 

@@ -266,11 +266,11 @@
             <td>
               {#if Object.keys(user.custom_grants || {}).length > 0}
                 <span class="badge badge-secondary badge-soft badge-sm">
-                  {Object.keys(user.custom_grants).length}
+                  {Object.keys(user.custom_grants || {}).length}
                 </span>
               {:else}
                 <span class="badge badge-soft badge-sm">
-                  {Object.keys(user.custom_grants).length}
+                  {Object.keys(user.custom_grants || {}).length}
                 </span>
               {/if}
             </td>

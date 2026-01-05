@@ -6,6 +6,11 @@
 		// Update title with hostname after page loads
 		if (typeof window !== 'undefined') {
 			document.title = window.location.hostname || window.location.host;
+      			// Set zoom scale for Windows (0.9 = 90%), others stay at 1.0
+			const isWindows = navigator.userAgent.indexOf('Win') !== -1;
+			document.documentElement.style.setProperty('--os-zoom', isWindows ? '0.9' : '1.0');
+
+
 		}
 	</script>
 
