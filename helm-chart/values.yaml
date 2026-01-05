@@ -59,7 +59,7 @@ backend:
   
   securityContext:
     allowPrivilegeEscalation: false
-    readOnlyRootFilesystem: false  # Set to true if your app supports it
+    readOnlyRootFilesystem: true
     runAsNonRoot: true
     runAsUser: 10101
     runAsGroup: 10101
@@ -176,7 +176,7 @@ frontend:
   
   securityContext:
     allowPrivilegeEscalation: false
-    readOnlyRootFilesystem: false  # Set to true if your app supports it
+    readOnlyRootFilesystem: true
     runAsNonRoot: true
     runAsUser: 10101
     runAsGroup: 10101

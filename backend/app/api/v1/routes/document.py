@@ -139,8 +139,6 @@ async def get_document(db: str, col: str, doc_id: str, user = Depends(require_re
     except ValueError as e:
         logger.error(f"Invalid document ID '{doc_id}': {e}", exc_info=True)
         raise HTTPException(status_code=400, detail="Invalid document ID")
-        # Let invalid opaque ID errors bubble up to the global handler
-        raise
     except Exception as e:
         logger.error(
             f"Failed to retrieve document '{doc_id}' from {db}.{col}: {e}",
