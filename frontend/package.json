@@ -30,7 +30,7 @@
         "@codemirror/language": "^6.12.1",
         "@codemirror/lint": "^6.9.0",
         "@codemirror/search": "^6.5.11",
-        "@codemirror/view": "^6.39.8",
+        "@codemirror/view": "^6.39.9",
         "@lezer/highlight": "^1.2.1",
         "@sveltejs/adapter-node": "^5.4.0",
         "@tailwindcss/vite": "^4.1.18",
