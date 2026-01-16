@@ -87,6 +87,7 @@ Manage databases, collections, documents, and GridFS visually with zero overhead
   - **# Value Helpers**: Provides quick access to common values (DateTime ranges, null, booleans, UUIDs, empty arrays/objects)
   - **Smart Templates**: Inserts pre-defined query patterns with placeholders and cursor positioning
   - **Real-time Validation**: Checks query syntax and structure as you type
+  - **Column Pinning**: Pin multiple columns to stay visible while scrolling — persists across sessions with configurable limits
 - Full CRUD support with bulk import/export of documents (JSON)
 - Run large-scale bulk operations with progress and error tracking
 - MongoDB-compliant naming and validation
