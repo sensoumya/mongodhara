@@ -90,9 +90,71 @@
   let allKeys: string[] = [];
   const maxLength = 50;
 
+  // Pinned columns (moved to front). Persisted in localStorage per db+collection
+  const MAX_PINNED = 3; // maximum number of pinned columns allowed
+  let pinnedColumns: string[] = [];
+
+  // Computed: check if pin limit is reached
+  $: isPinLimitReached = pinnedColumns.length >= MAX_PINNED;
+
   // References to the table bodies for height synchronization
   let mainTableBody: HTMLTableSectionElement;
   let actionTableBody: HTMLTableSectionElement;
+
+  // Load pinned columns from localStorage on mount (scoped by db+collection)
+  function loadPinnedColumns() {
+    try {
+      if (typeof window === "undefined") return;
+      const key = `pinnedColumns:${db}:${item}`;
+      const stored = localStorage.getItem(key);
+      if (!stored) return;
+
+      try {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) pinnedColumns = parsed;
+        else if (typeof parsed === "string") pinnedColumns = [parsed];
+      } catch (e) {
+        // Backwards compatibility: if stored is a plain string (old behavior)
+        pinnedColumns = [stored];
+      }
+    } catch (e) {
+      // ignore storage errors
+    }
+  }
+
+  function savePinnedColumns() {
+    try {
+      if (typeof window === "undefined") return;
+      const key = `pinnedColumns:${db}:${item}`;
+      if (pinnedColumns && pinnedColumns.length > 0)
+        localStorage.setItem(key, JSON.stringify(pinnedColumns));
+      else localStorage.removeItem(key);
+    } catch (e) {
+      // ignore storage errors
+    }
+  }
+
+  function togglePinnedColumn(key: string) {
+    const idx = pinnedColumns.indexOf(key);
+    if (idx >= 0) {
+      // unpin
+      pinnedColumns.splice(idx, 1);
+      pinnedColumns = pinnedColumns; // trigger reactivity
+    } else {
+      // pin (respect limit)
+      if (pinnedColumns.length >= MAX_PINNED) {
+        addNotification(
+          `Maximum ${MAX_PINNED} pinned columns allowed. Unpin another to add this one.`,
+          "warning"
+        );
+        return;
+      }
+      pinnedColumns = [...pinnedColumns, key]; // trigger reactivity
+    }
+    savePinnedColumns();
+    // Recompute keys ordering
+    allKeys = extractAllKeys(documentsResponse.docs, pinnedColumns);
+  }
 
   /**
    * Closes dropdowns by removing focus from dropdown elements
@@ -148,14 +210,16 @@
 
   /**
    * Extracts and sorts all unique keys from a list of documents based on a specific order.
-   * - _id is always first.
-   * - Then, columns with 'id' in their name (case-insensitive), sorted alphabetically.
+   * - When columns are pinned: pinned columns first, then _id, then rest
+   * - When no columns are pinned: _id first, then rest
+   * - Rest: columns with 'id' in their name (case-insensitive), sorted alphabetically.
    * - Then, columns with 'name' in their name (case-insensitive), sorted alphabetically.
    * - Finally, all other columns, sorted alphabetically.
    * @param docs An array of document objects.
+   * @param pinnedKeys Array of pinned column keys to place at front.
    * @returns An array of unique, sorted keys.
    */
-  function extractAllKeys(docs: any[]): string[] {
+  function extractAllKeys(docs: any[], pinnedKeys: string[] = []): string[] {
     const allUniqueKeys = new Set<string>();
     docs.forEach((doc) => {
       Object.keys(doc).forEach((key) => {
@@ -167,10 +231,11 @@
     const idKeys: string[] = [];
     const nameKeys: string[] = [];
     const otherKeys: string[] = [];
+    let hasId = false;
 
     allUniqueKeys.forEach((key) => {
       if (key === "_id") {
-        // _id will be added explicitly later
+        hasId = true;
         return;
       }
       const lowerCaseKey = key.toLowerCase();
@@ -188,8 +253,22 @@
     nameKeys.sort();
     otherKeys.sort();
 
-    // Construct the final sorted array
-    return ["_id", ...idKeys, ...nameKeys, ...otherKeys];
+    // Construct sorted array based on pinned columns
+    let sorted: string[] = [];
+
+    if (pinnedKeys && pinnedKeys.length > 0) {
+      // When columns are pinned: pinned columns first, then _id, then rest
+      const validPinned = pinnedKeys.filter(pk => pk && pk !== "_id" && allUniqueKeys.has(pk));
+      const remaining = [hasId ? "_id" : null, ...idKeys, ...nameKeys, ...otherKeys].filter(Boolean) as string[];
+      // Remove pinned keys from remaining
+      const remainingFiltered = remaining.filter(k => !validPinned.includes(k));
+      sorted = [...validPinned, ...remainingFiltered];
+    } else {
+      // When no columns are pinned: _id first (if exists), then rest
+      sorted = hasId ? ["_id", ...idKeys, ...nameKeys, ...otherKeys] : [...idKeys, ...nameKeys, ...otherKeys];
+    }
+
+    return sorted;
   }
 
   // Debounce timeout for height synchronization
@@ -363,7 +442,7 @@
       addNotification(e.message, "error");
     }
 
-    allKeys = extractAllKeys(documentsResponse.docs);
+    allKeys = extractAllKeys(documentsResponse.docs, pinnedColumns);
   }
 
   /**
@@ -418,7 +497,7 @@
           page: response.page ?? currentPage,
           page_size: response.page_size ?? pageSize,
         };
-        allKeys = extractAllKeys(documentsResponse.docs);
+        allKeys = extractAllKeys(documentsResponse.docs, pinnedColumns);
       } else {
         documentsResponse = {
           docs: [],
@@ -966,6 +1045,7 @@
 
   // Initial data fetch on component mount
   onMount(() => {
+    loadPinnedColumns();
     fetchData(true);
 
     // Add resize event listener for height synchronization on zoom/resize
@@ -1180,14 +1260,33 @@
                       on:click={() => handleHeaderSort(key)}
                     >
                       <div class="flex items-center poppins space-x-1">
-                        <span>{key}</span>
-                        {#if sortField === key}
-                          {#if sortOrder === 1}
-                            <i class="fas fa-arrow-up text-xs"></i>
-                          {:else}
-                            <i class="fas fa-arrow-down text-xs"></i>
+                        <span class="flex-1">{key}</span>
+                        <div class="flex items-center gap-1">
+                          {#if sortField === key}
+                            {#if sortOrder === 1}
+                              <i class="fas fa-arrow-up text-xs"></i>
+                            {:else}
+                              <i class="fas fa-arrow-down text-xs"></i>
+                            {/if}
                           {/if}
-                        {/if}
+
+                          <!-- Pin button with compact styling -->
+                          <button
+                            on:click|stopPropagation={() => togglePinnedColumn(key)}
+                            class="pin-btn"
+                            class:pinned={pinnedColumns.includes(key)}
+                            class:cursor-not-allowed={!pinnedColumns.includes(key) && isPinLimitReached}
+                            disabled={!pinnedColumns.includes(key) && isPinLimitReached}
+                            aria-pressed={pinnedColumns.includes(key)}
+                            aria-label={pinnedColumns.includes(key) ? `Unpin column ${key}` : isPinLimitReached ? `Cannot pin - limit reached` : `Pin column ${key}`}
+                          >
+                            {#if pinnedColumns.includes(key)}
+                              <i class="fa-solid fa-square-check"></i>
+                            {:else}
+                              <i class="fa-regular fa-square"></i>
+                            {/if}
+                          </button>
+                        </div>
                       </div>
                     </th>
                   {/each}
@@ -1237,7 +1336,11 @@
             <table class="table" style="width: 60px;">
               <thead>
                 <tr class="bg-primary/40 poppins">
-                  <th class="text-center w-full">&nbsp;</th>
+                  <th class="text-center w-full">
+                    <div class="flex items-center justify-center" style="min-height: 20px;">
+                      <span style="opacity: 0;">.</span>
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody bind:this={actionTableBody}>
@@ -1448,25 +1551,6 @@
 </Modal>
 
 <style>
-  /* Keyframes for the pulsing animation */
-  @keyframes pulse-leaf {
-    0%,
-    100% {
-      transform: scale(1) rotate(0deg);
-      filter: brightness(100%);
-    }
-    50% {
-      transform: scale(1.1) rotate(5deg);
-      filter: brightness(130%);
-    }
-  }
-
-  .pulse-leaf {
-    font-size: 80px;
-    animation: pulse-leaf 2s ease-in-out infinite;
-    transform-origin: center bottom;
-  }
-
   /* Custom class to remove padding from the action column cells */
   .no-padding-table-cell {
     padding-top: 0 !important;
@@ -1531,17 +1615,63 @@
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
   }
 
-  /* Custom tooltip styles for long text */
-  .tooltip:before {
-    max-width: 300px;
-    white-space: pre-wrap;
-    word-break: break-word;
-    text-align: left;
-    line-height: 1.4;
+  .pin-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid var(--fallback-bc, oklch(var(--bc) / 0.2));
+    border-radius: 50%;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
   }
 
-  /* Ensure tooltip content wraps properly */
-  .tooltip[data-tip]:before {
-    content: attr(data-tip);
+  .pin-btn i {
+    font-size: 10px;
+    opacity: 0.5;
+    transition: opacity 0.15s ease;
+  }
+
+  .pin-btn:hover {
+    background: var(--fallback-b2, oklch(var(--b2)));
+    border-color: var(--fallback-bc, oklch(var(--bc) / 0.4));
+  }
+
+  .pin-btn:hover i {
+    opacity: 0.8;
+  }
+
+  .pin-btn.pinned {
+    background: var(--fallback-p, oklch(var(--p) / 0.1));
+    border-color: var(--fallback-p, oklch(var(--p) / 0.4));
+  }
+
+  .pin-btn.pinned i {
+    color: var(--fallback-p, oklch(var(--p)));
+    opacity: 1;
+  }
+
+  .pin-btn.pinned:hover {
+    background: var(--fallback-p, oklch(var(--p) / 0.2));
+    border-color: var(--fallback-p, oklch(var(--p) / 0.6));
+  }
+
+  /* Disabled pin button styling - show not-allowed cursor */
+  .pin-btn:disabled,
+  .pin-btn.cursor-not-allowed {
+    cursor: not-allowed !important;
+  }
+
+  .pin-btn:disabled:hover {
+    background: transparent;
+    border-color: var(--fallback-bc, oklch(var(--bc) / 0.2));
+  }
+
+  .pin-btn:disabled:hover i {
+    opacity: 0.5;
   }
 </style>

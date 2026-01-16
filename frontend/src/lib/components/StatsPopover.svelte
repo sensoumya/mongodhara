@@ -76,7 +76,8 @@
     out:fade={{ duration: 200 }}
     on:click|stopPropagation
   >
-    <div class="flex justify-end">
+    <div class="flex justify-between items-center p-2 pb-0">
+      <h3 class="text-sm font-semibold text-base-content/80 poppins">Statistics</h3>
       <button
         on:click|stopPropagation={handleClose}
         class="text-neutral/50 rounded-full hover:text-error cursor-pointer"
@@ -85,6 +86,7 @@
         <i class="fa-solid fa-xmark"></i>
       </button>
     </div>
+    <div class="h-px bg-gradient-to-r from-transparent via-base-content/20 to-transparent mt-1 mb-0"></div>
     <div
       class="h-32 overflow-hidden relative cursor-default"
       on:click|stopPropagation
