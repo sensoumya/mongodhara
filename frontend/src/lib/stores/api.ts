@@ -1,4 +1,4 @@
-import { triggerAuthError } from './error-overlay';
+import { triggerAuthError, triggerServerError } from './error-overlay';
 
 const API_BASE = import.meta.env.VITE_API_BASE || "/mdhara/api/v1";
 
@@ -32,6 +32,11 @@ export async function apiGet<T>(path: string): Promise<T> {
     throw new Error(`Auth error: ${res.status}`);
   }
   
+  if (res.status === 503) {
+    triggerServerError(res.status, `Service temporarily unavailable`);
+    throw new Error(`Server error: ${res.status}`);
+  }
+  
   // Parse JSON once for both success and error cases
   const data = await res.json();
   
@@ -54,6 +59,11 @@ export async function apiPost<T>(path: string, body?: any): Promise<T> {
   if (res.status === 401) {
     triggerAuthError(res.status, `Authentication failed for ${path}`);
     throw new Error(`Auth error: ${res.status}`);
+  }
+  
+  if (res.status === 503) {
+    triggerServerError(res.status, `Service temporarily unavailable`);
+    throw new Error(`Server error: ${res.status}`);
   }
   
   // Parse JSON once for both success and error cases
@@ -80,6 +90,11 @@ export async function apiPut<T>(path: string, body: any): Promise<T> {
     throw new Error(`Auth error: ${res.status}`);
   }
   
+  if (res.status === 503) {
+    triggerServerError(res.status, `Service temporarily unavailable`);
+    throw new Error(`Server error: ${res.status}`);
+  }
+  
   // Parse JSON once for both success and error cases
   const data = await res.json();
   
@@ -101,6 +116,11 @@ export async function apiDelete<T>(path: string): Promise<T> {
   if (res.status === 401) {
     triggerAuthError(res.status, `Authentication failed for ${path}`);
     throw new Error(`Auth error: ${res.status}`);
+  }
+  
+  if (res.status === 503) {
+    triggerServerError(res.status, `Service temporarily unavailable`);
+    throw new Error(`Server error: ${res.status}`);
   }
   
   // Parse JSON once for both success and error cases
@@ -125,6 +145,11 @@ export async function apiUploadFile<T>(path: string, formData: FormData): Promis
   if (res.status === 401) {
     triggerAuthError(res.status, `Authentication failed for ${path}`);
     throw new Error(`Auth error: ${res.status}`);
+  }
+  
+  if (res.status === 503) {
+    triggerServerError(res.status, `Service temporarily unavailable`);
+    throw new Error(`Server error: ${res.status}`);
   }
   
   // Handle 413 (Request Entity Too Large) - response will be HTML from ingress
@@ -154,6 +179,11 @@ export async function apiDownload(path: string): Promise<Blob> {
     throw new Error(`Auth error: ${res.status}`);
   }
   
+  if (res.status === 503) {
+    triggerServerError(res.status, `Service temporarily unavailable`);
+    throw new Error(`Server error: ${res.status}`);
+  }
+  
   if (!res.ok) {
     // Parse JSON error response to extract server message
     const errorData = await res.json();
@@ -173,6 +203,11 @@ export async function apiDownloadText(path: string): Promise<string> {
   if (res.status === 401) {
     triggerAuthError(res.status, `Authentication failed for ${path}`);
     throw new Error(`Auth error: ${res.status}`);
+  }
+  
+  if (res.status === 503) {
+    triggerServerError(res.status, `Service temporarily unavailable`);
+    throw new Error(`Server error: ${res.status}`);
   }
   
   if (!res.ok) {
