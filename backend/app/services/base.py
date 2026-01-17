@@ -16,7 +16,11 @@ class BaseMongoService:
     @property
     def client(self):
         """Get the MongoDB client with optimized connection pooling."""
-        current_loop = asyncio.get_event_loop()
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop in this thread — fall back to the policy loop
+            current_loop = asyncio.get_event_loop_policy().get_event_loop()
         if self._client is None or self._loop is not current_loop:
             if self._client is not None:
                 logger.debug("Event loop changed, recreating MongoDB client")

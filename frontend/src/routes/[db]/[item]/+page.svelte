@@ -257,9 +257,9 @@
     let sorted: string[] = [];
 
     if (pinnedKeys && pinnedKeys.length > 0) {
-      // When columns are pinned: pinned columns first, then _id, then rest
-      const validPinned = pinnedKeys.filter(pk => pk && pk !== "_id" && allUniqueKeys.has(pk));
-      const remaining = [hasId ? "_id" : null, ...idKeys, ...nameKeys, ...otherKeys].filter(Boolean) as string[];
+      // When columns are pinned: pinned columns first (with _id at the beginning if pinned), then rest
+      const validPinned = pinnedKeys.filter(pk => pk && allUniqueKeys.has(pk));
+      const remaining = [hasId && !validPinned.includes("_id") ? "_id" : null, ...idKeys, ...nameKeys, ...otherKeys].filter(Boolean) as string[];
       // Remove pinned keys from remaining
       const remainingFiltered = remaining.filter(k => !validPinned.includes(k));
       sorted = [...validPinned, ...remainingFiltered];
@@ -1064,16 +1064,6 @@
     };
   });
 </script>
-
-<svelte:head>
-  <link
-    rel="stylesheet"
-    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
-    xintegrity="sha512-SnH5WK+bZxgPHs44uW/r8W7Wj8n4Lz8mY9wA4164w2r86Lz8mFj+J/l+Y/sD+8L/LqN+g96N+A=="
-    crossorigin="anonymous"
-    referrerpolicy="origin"
-  />
-</svelte:head>
 
 <div
   class="h-[calc(100vh-90px)] flex flex-col px-2 pb-2 bg-base-100 text-base-content"

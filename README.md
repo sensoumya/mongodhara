@@ -81,13 +81,13 @@ Manage databases, collections, documents, and GridFS visually with zero overhead
 
 - Create, rename, and delete databases and collections
 - Browse, query, and edit documents with a rich JSON editor
+- Column pinning for table view to keep important fields visible
 - **Context-Aware Query Builder**: Streamlines query writing with helpful suggestions:
   - **@ Operator Autocomplete**: Quickly inserts 50+ MongoDB operators (comparison, logical, array, geospatial) with convenient cursor placement
   - **/ Field Name Autocomplete**: Suggests actual field names from your collections in real-time
   - **# Value Helpers**: Provides quick access to common values (DateTime ranges, null, booleans, UUIDs, empty arrays/objects)
   - **Smart Templates**: Inserts pre-defined query patterns with placeholders and cursor positioning
   - **Real-time Validation**: Checks query syntax and structure as you type
-  - **Column Pinning**: Pin multiple columns to stay visible while scrolling — persists across sessions with configurable limits
 - Full CRUD support with bulk import/export of documents (JSON)
 - Run large-scale bulk operations with progress and error tracking
 - MongoDB-compliant naming and validation
