@@ -29,7 +29,7 @@
         "@codemirror/lang-json": "^6.0.2",
         "@codemirror/language": "^6.11.3",
         "@codemirror/lint": "^6.9.0",
-        "@codemirror/search": "^6.5.11",
+        "@codemirror/search": "^6.6.0",
         "@codemirror/view": "^6.39.9",
         "@lezer/highlight": "^1.2.1",
         "@sveltejs/adapter-node": "^5.4.0",
