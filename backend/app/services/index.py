@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 from app.core.config import ENABLE_OPAQUE_IDS
 from app.core.logger import logger
 from app.services.base import BaseMongoService

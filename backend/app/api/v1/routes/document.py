@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 import json
 from typing import Optional
 

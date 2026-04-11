@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 from bson import ObjectId
 from bson.errors import InvalidId
 

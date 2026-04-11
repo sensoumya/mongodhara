@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 import fnmatch
 from typing import Optional
 

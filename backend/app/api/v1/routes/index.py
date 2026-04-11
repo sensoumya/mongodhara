@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query

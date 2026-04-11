@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 from app.core.config import ENABLE_AUDIT_LOGGING, ENABLE_OPAQUE_IDS
 from app.core.exceptions import CollectionExistsError
 from app.core.logger import logger

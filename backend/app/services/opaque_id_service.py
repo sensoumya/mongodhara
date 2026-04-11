@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 import base64
 import os
 from typing import Optional

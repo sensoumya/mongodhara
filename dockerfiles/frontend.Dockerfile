@@ -1,10 +1,12 @@
+# Pin to a specific patch for reproducible builds.
+# Update this digest/tag after verifying: docker pull node:24 && docker inspect node:24
 # Stage 1: Build the SvelteKit application
-FROM node:24 AS builder
+FROM node:24.4.0 AS builder
 
 WORKDIR /app
 
-# Copy package files to the working directory (fixed with trailing /)
-COPY frontend/package*.json ./
+# Copy package files and config files needed for prepare script
+COPY frontend/package*.json frontend/svelte.config.js frontend/tsconfig.json frontend/vite.config.ts ./
 RUN npm install
 
 # Copy the rest of the application code
@@ -14,7 +16,7 @@ COPY frontend/ .
 RUN npm run build
 
 # Stage 2: Create the runtime image
-FROM node:24-slim
+FROM node:24.4.0-slim
 
 WORKDIR /app
 
