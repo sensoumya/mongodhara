@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 import fnmatch
 import re
 from datetime import datetime

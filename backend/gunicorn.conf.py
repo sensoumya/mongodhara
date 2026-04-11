@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # gunicorn.conf.py
 import os
 

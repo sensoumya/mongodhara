@@ -7,11 +7,6 @@ html {
   scroll-behavior: smooth;
 }
 
-html.windows {
-  font-size: 90%;
-}
-
- 
 @media (min-width: 768px) {
   :root {
     font-size: calc(15px * var(--os-zoom, 1.0));

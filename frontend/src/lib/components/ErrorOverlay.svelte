@@ -32,7 +32,7 @@
         return {
           icon: "fas fa-server",
           title: "Server Error",
-          message: `The server ran into an issue${statusCode ? ` (error code ${statusCode})` : ""}. You can try reloading the page to continue.`,
+          message: "The server is temporarily unavailable. Please try again in a moment.",
         };
       default:
         return {

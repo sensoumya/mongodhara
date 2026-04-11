@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 class DatabaseExistsError(Exception):
     """Custom exception for database already exists scenarios"""
     pass

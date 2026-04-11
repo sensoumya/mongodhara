@@ -1,14 +1,20 @@
-import { triggerNetworkError, triggerUnknownError } from '$lib/stores/error-overlay';
+import { triggerNetworkError, triggerUnknownError, triggerServerError } from '$lib/stores/error-overlay';
 import type { HandleClientError } from '@sveltejs/kit';
 
 export const handleError: HandleClientError = ({ error, event }) => {
   // Log the error for debugging
   console.error('Client error:', error, event);
 
-  // Show the error overlay for UI component failures
-  triggerUnknownError(
-    error instanceof Error ? error.message : 'Failed to load page component'
-  );
+  // Check if this is a 503 server error
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  if (errorMessage.includes('503') || errorMessage.includes('Service Unavailable')) {
+    triggerServerError(503, 'Service temporarily unavailable. Please try again later.');
+  } else {
+    // Show the error overlay for UI component failures
+    triggerUnknownError(
+      error instanceof Error ? error.message : 'Failed to load page component'
+    );
+  }
 
   // Return error details (SvelteKit requirement)
   return {
