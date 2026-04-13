@@ -57,7 +57,7 @@ jobs:
             type=raw,value=${{ steps.extract-version.outputs.version }}
 
       - name: Build and push backend Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: dockerfiles/backend.Dockerfile
@@ -113,7 +113,7 @@ jobs:
             type=raw,value=${{ steps.extract-version-frontend.outputs.version }}
 
       - name: Build and push frontend Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: dockerfiles/frontend.Dockerfile
