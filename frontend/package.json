@@ -33,7 +33,7 @@
         "@codemirror/view": "^6.41.0",
         "@lezer/highlight": "^1.2.1",
         "@sveltejs/adapter-node": "^5.5.4",
-        "@tailwindcss/vite": "^4.2.2",
+        "@tailwindcss/vite": "^4.2.4",
         "codemirror": "^6.0.2",
         "cookie": "^0.7.0"
     },
