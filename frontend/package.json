@@ -17,7 +17,7 @@
         "autoprefixer": "^10.4.27",
         "daisyui": "^5.5.19",
         "jsonlint-mod": "^1.7.6",
-        "postcss": "^8.5.9",
+        "postcss": "^8.5.14",
         "svelte": "^5.55.3",
         "svelte-check": "^4.4.6",
         "tailwindcss": "^4.2.2",
