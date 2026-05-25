@@ -1,4 +1,4 @@
-FROM node:24.4.0 AS builder
+FROM node:26.2.0 AS builder
 
 WORKDIR /app
 
@@ -8,7 +8,7 @@ RUN npm install
 COPY frontend/ .
 RUN npm run build
 
-FROM node:24.4.0-slim
+FROM node:26.2.0-slim
 
 WORKDIR /app
 
